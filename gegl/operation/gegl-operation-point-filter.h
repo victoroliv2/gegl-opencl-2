@@ -62,7 +62,7 @@ struct _GeglOperationPointFilterClass
   gboolean (* cl_process) (GeglOperation      *self,
                            cl_mem             in_tex,
                            cl_mem             out_tex,
-                           const size_t global_worksize[2],
+                           const size_t global_worksize,
                            const GeglRectangle *roi);
 };
 
