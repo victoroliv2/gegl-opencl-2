@@ -215,9 +215,6 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
                                                  NULL, &errcode);
         if (errcode != CL_SUCCESS) CL_ERROR;
 
-        out_data[i] = (gfloat *) gegl_malloc(region[0] * region[1] * babl_format_get_bytes_per_pixel(out_format));
-        if (out_data[i] == NULL) CL_ERROR;
-
         i++;
       }
 
@@ -268,12 +265,13 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
   /* GPU -> CPU */
   for (i=0; i < ntex; i++)
     {
-      const size_t region[3] = {input_tex.region[i].width, input_tex.region[i].height, 1};
-      const size_t mem_size = region[0] * region[1]*sizeof(cl_float4);
+      const size_t region[3] = {output_tex.region[i].width, output_tex.region[i].height, 1};
+      const size_t mem_size = region[0] * region[1] * sizeof(cl_float4);
 
-      errcode = gegl_clEnqueueReadBuffer(gegl_cl_get_command_queue(), output_tex.tex[i], CL_FALSE,
-                                         0, mem_size, out_data[i],
-                                         0, NULL, NULL);
+      out_data[i]  = gegl_clEnqueueMapBuffer(gegl_cl_get_command_queue(), output_tex.tex[i], CL_FALSE,
+                                             CL_MAP_READ,
+                                             0, mem_size,
+                                             0, NULL, NULL, &errcode);
       if (errcode != CL_SUCCESS) CL_ERROR;
     }
 
@@ -298,7 +296,6 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
     {
       gegl_clReleaseMemObject (input_tex.tex[i]);
       gegl_clReleaseMemObject (output_tex.tex[i]);
-      gegl_free(out_data[i]);
     }
 
   gegl_free(input_tex.tex);
@@ -315,7 +312,6 @@ error:
       {
         if (input_tex.tex[i])  gegl_clReleaseMemObject (input_tex.tex[i]);
         if (output_tex.tex[i]) gegl_clReleaseMemObject (output_tex.tex[i]);
-        if (out_data[i])       gegl_free(out_data[i]);
       }
 
   if (input_tex.tex)     gegl_free(input_tex.tex);
