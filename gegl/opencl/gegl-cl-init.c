@@ -260,7 +260,7 @@ gegl_cl_init (GError **error)
   cl_program_hash = g_hash_table_new (g_str_hash, g_str_equal);
 
   if (cl_state.is_accelerated)
-    gegl_cl_color_compile_kernels();
+    gegl_cl_color_prepare();
 
   g_printf("[OpenCL] OK\n");
 
@@ -273,7 +273,7 @@ gegl_cl_init (GError **error)
  *      will retrieve the same key
  */
 gegl_cl_run_data *
-gegl_cl_compile_and_build (const char *program_source, const char *kernel_name[])
+gegl_cl_compile_and_build (const gchar *program_source, const gchar *kernel_name[], const gchar *compiler_options)
 {
   gint errcode;
   gegl_cl_run_data *cl_data = NULL;
@@ -291,10 +291,10 @@ gegl_cl_compile_and_build (const char *program_source, const char *kernel_name[]
       CL_SAFE_CALL( cl_data->program = gegl_clCreateProgramWithSource(gegl_cl_get_context(), 1, &program_source,
                                                                       &length, &errcode) );
 
-      errcode = gegl_clBuildProgram(cl_data->program, 0, NULL, NULL, NULL, NULL);
+      errcode = gegl_clBuildProgram(cl_data->program, 0, NULL, compiler_options, NULL, NULL);
       if (errcode != CL_SUCCESS)
         {
-          char buffer[2000];
+          gchar buffer[12345];
           CL_SAFE_CALL( errcode = gegl_clGetProgramBuildInfo(cl_data->program,
                                                              gegl_cl_get_device(),
                                                              CL_PROGRAM_BUILD_LOG,
@@ -304,7 +304,7 @@ gegl_cl_compile_and_build (const char *program_source, const char *kernel_name[]
         }
       else
         {
-          g_printf("[OpenCL] Compiling successful\n");
+          g_printf("[OpenCL] Compiling - Success\n");
         }
 
       for (i=0; i<kernel_n; i++)

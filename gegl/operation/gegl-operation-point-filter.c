@@ -65,6 +65,8 @@ gegl_operation_point_filter_class_init (GeglOperationPointFilterClass *klass)
 
   klass->process = NULL;
   klass->cl_process = NULL;
+  klass->cl_kernel_source     = NULL;
+  klass->cl_kernel_parameters = NULL;
 }
 
 static void
@@ -82,6 +84,63 @@ struct buf_tex
 #define CL_ERROR {g_assert(0);}
 //#define CL_ERROR {goto error;}
 
+#include "opencl/gegl-cl-color-kernel.h"
+#include "opencl/gegl-cl-color.h"
+
+static cl_kernel
+cl_generate_kernel (const gchar *kernel_source, const gchar *kernel_parameters,
+                    const Babl *op_in_format, const Babl *buffer_in_format,
+                    const Babl *op_out_format, const Babl *buffer_out_format,
+                    gboolean *need_babl_in, gboolean *need_babl_out)
+{
+  static const gchar *kernel_template =
+  "                                                       \n"
+  " %s                                                    \n" /* header */
+  "                                                       \n"
+  "__kernel void kernel_point (read_only  __global float4 *in,  \n"
+  "                            write_only __global float4 *out, \n"
+  "                            %s                               \n" /* custom kernel parameters */
+  "                           )                                 \n"
+  "{                                                      \n"
+  "  int gid = get_global_id(0);                          \n"
+  "  float4 in_v = in[gid];                               \n"
+  "  float4 out_v;                                        \n"
+  "                                                       \n"
+  "  %s                                                   \n" /* color conversion */
+  "                                                       \n"
+  "  %s                                                   \n" /* custom processing code */
+  "                                                       \n"
+  "  %s                                                   \n" /* color conversion */
+  "                                                       \n"
+  "  out[gid] = out_v;                                    \n"
+  "}                                                      \n";
+
+  static const gchar *kernel_name[] = {"kernel_point", NULL};
+  gegl_cl_run_data *cl_data = NULL;
+
+  GString *g_kernel_source_full = g_string_new ("");
+  GString *g_compiler_options   = g_string_new ("");
+
+  gint conv_in [2];
+  gint conv_out[2];
+
+  g_string_printf(g_kernel_source_full, kernel_template, kernel_color_header,
+                                        kernel_parameters, kernel_color_conv_in,
+                                        kernel_source, kernel_color_conv_out);
+
+  *need_babl_in  = !gegl_cl_color_conv (buffer_in_format, op_in_format,      conv_in );
+  *need_babl_out = !gegl_cl_color_conv (op_out_format,    buffer_out_format, conv_out);
+
+  g_string_printf(g_compiler_options,
+                  "-DCONV_IN_1=%d -DCONV_IN_2=%d -DCONV_OUT_1=%d -DCONV_OUT_2=%d",
+                  conv_in[0], conv_in[1], conv_out[0], conv_out[1]);
+
+  /* g_printf("[OpenCL] Kernel:\n%s\n", g_kernel_source_full->str); */
+
+  cl_data = gegl_cl_compile_and_build (g_kernel_source_full->str, kernel_name, g_compiler_options->str);
+  return cl_data->kernel[0];
+}
+
 static gboolean
 gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
                                              GeglBuffer          *input,
@@ -90,11 +149,6 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
 {
   const Babl *in_format  = gegl_operation_get_format (operation, "input");
   const Babl *out_format = gegl_operation_get_format (operation, "output");
-
-  g_printf("[OpenCL] BABL formats: (%s,%s:%d) (%s,%s:%d)\n", babl_get_name(gegl_buffer_get_format(input)),  babl_get_name(in_format),
-                                                             gegl_cl_color_supported (gegl_buffer_get_format(input), in_format),
-                                                             babl_get_name(out_format), babl_get_name(gegl_buffer_get_format(output)),
-                                                             gegl_cl_color_supported (out_format, gegl_buffer_get_format(output)));
 
   GeglOperationPointFilterClass *point_filter_class = GEGL_OPERATION_POINT_FILTER_GET_CLASS (operation);
 
@@ -107,6 +161,20 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
   int ntex = 0;
   struct buf_tex input_tex;
   struct buf_tex output_tex;
+
+  gboolean need_babl_in  = TRUE;
+  gboolean need_babl_out = TRUE;
+
+  /* generate kernel */
+  cl_kernel kernel = cl_generate_kernel (point_filter_class->cl_kernel_source, point_filter_class->cl_kernel_parameters,
+                                         gegl_buffer_get_format(input),  in_format,
+                                         gegl_buffer_get_format(output), out_format,
+                                         &need_babl_in, &need_babl_out);
+
+  g_printf("[OpenCL] BABL formats: (%s,%s:%d) (%s,%s:%d)\n", babl_get_name(gegl_buffer_get_format(input)),  babl_get_name(in_format),
+                                                             gegl_cl_color_supported (gegl_buffer_get_format(input), in_format),
+                                                             babl_get_name(out_format), babl_get_name(gegl_buffer_get_format(output)),
+                                                             gegl_cl_color_supported (out_format, gegl_buffer_get_format(output)));
 
   for (y=0; y < result->height; y += cl_state.max_image_height)
    for (x=0; x < result->width;  x += cl_state.max_image_width)
@@ -166,9 +234,9 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
       if (errcode != CL_SUCCESS) CL_ERROR;
 
       /* un-tile */
-      //if (gegl_cl_color_supported (gegl_buffer_get_format(input), in_format)) /* color conversion will be performed in the GPU later */
-      //  gegl_buffer_get (input, 1.0, &input_tex.region[i], gegl_buffer_get_format(input), in_data[i], GEGL_AUTO_ROWSTRIDE);
-      //else                                                 /* color conversion using BABL */
+      if (!need_babl_in)
+        gegl_buffer_get (input, 1.0, &input_tex.region[i], gegl_buffer_get_format(input), in_data[i], GEGL_AUTO_ROWSTRIDE);
+      else                                                 /* color conversion using BABL */
         gegl_buffer_get (input, 1.0, &input_tex.region[i], in_format, in_data[i], GEGL_AUTO_ROWSTRIDE);
     }
 
@@ -183,49 +251,19 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
   errcode = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
   if (errcode != CL_SUCCESS) CL_ERROR;
 
-  /* color conversion in the GPU (input) */
-  //if (gegl_cl_color_supported (gegl_buffer_get_format(input), in_format))
-  //  for (i=0; i < ntex; i++)
-  //   {
-  //     cl_mem swap;
-  //     const size_t size[2] = {input_tex.region[i].width, input_tex.region[i].height};
-  //     errcode = gegl_cl_color_conv (input_tex.tex[i], output_tex.tex[i], size, gegl_buffer_get_format(input), in_format);
-
-  //     if (errcode == FALSE) CL_ERROR;
-
-  //     swap = input_tex.tex[i];
-  //     input_tex.tex[i]  = output_tex.tex[i];
-  //     output_tex.tex[i] = swap;
-  //   }
-
   /* Process */
   for (i=0; i < ntex; i++)
     {
       const size_t region[3] = {input_tex.region[i].width, input_tex.region[i].height, 1};
       const size_t global_worksize = region[0] * region[1];
 
-      errcode = point_filter_class->cl_process(operation, input_tex.tex[i], output_tex.tex[i], global_worksize, &input_tex.region[i]);
+      errcode = point_filter_class->cl_process(operation, input_tex.tex[i], output_tex.tex[i], kernel, global_worksize, &input_tex.region[i]);
       if (errcode != CL_SUCCESS) CL_ERROR;
     }
 
   /* Wait Processing */
   errcode = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
   if (errcode != CL_SUCCESS) CL_ERROR;
-
-  /* color conversion in the GPU (output) */
-  //if (gegl_cl_color_supported (out_format, gegl_buffer_get_format(output)))
-  //  for (i=0; i < ntex; i++)
-  //   {
-  //     cl_mem swap;
-  //     const size_t size[2] = {output_tex.region[i].width, output_tex.region[i].height};
-  //     errcode = gegl_cl_color_conv (output_tex.tex[i], input_tex.tex[i], size, out_format, gegl_buffer_get_format(output));
-
-  //     if (errcode == FALSE) CL_ERROR;
-
-  //     swap = input_tex.tex[i];
-  //     input_tex.tex[i]  = output_tex.tex[i];
-  //     output_tex.tex[i] = swap;
-  //   }
 
   /* GPU -> CPU */
   for (i=0; i < ntex; i++)
@@ -250,9 +288,9 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
   for (i=0; i < ntex; i++)
     {
       /* tile-ize */
-      //if (gegl_cl_color_supported (out_format, gegl_buffer_get_format(output))) /* color conversion has already been be performed in the GPU */
-      //  gegl_buffer_set (output, &output_tex.region[i], gegl_buffer_get_format(output), out_data[i], GEGL_AUTO_ROWSTRIDE);
-      //else                                                 /* color conversion using BABL */
+      if (need_babl_out)
+        gegl_buffer_set (output, &output_tex.region[i], gegl_buffer_get_format(output), out_data[i], GEGL_AUTO_ROWSTRIDE);
+      else                                                 /* color conversion using BABL */
         gegl_buffer_set (output, &output_tex.region[i], out_format, out_data[i], GEGL_AUTO_ROWSTRIDE);
     }
 

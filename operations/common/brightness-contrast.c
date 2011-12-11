@@ -106,27 +106,18 @@ process (GeglOperation       *op,
 
 #include "opencl/gegl-cl.h"
 
-static const char* kernel_source =
-"__kernel void kernel_bc(read_only  __global float4 *in,        \n"
-"                        write_only __global float4 *out,       \n"
-"                         float brightness,                     \n"
-"                         float contrast)                       \n"
-"{                                                              \n"
-"  int gid = get_global_id(0);                                  \n"
-"  float4 in_v  = in[gid];                                      \n"
-"  float4 out_v;                                                \n"
-"  out_v.xyz = (in_v.xyz - 0.5f) * contrast + brightness + 0.5f;\n"
-"  out_v.w   =  in_v.w;                                         \n"
-"  out[gid]  =  out_v;                                          \n"
-"}                                                              \n";
+static gchar *kernel_source =
+"out_v.xyz = (in_v.xyz - 0.5f) * contrast + brightness + 0.5f; \n"
+"out_v.w   =  in_v.w;                                          \n";
 
-static gegl_cl_run_data *cl_data = NULL;
+static gchar *kernel_parameters = "float brightness, float contrast";
 
 /* OpenCL processing function */
 static gboolean
 cl_process (GeglOperation       *op,
             cl_mem              in_tex,
             cl_mem              out_tex,
+            cl_kernel           kernel,
             const size_t global_worksize,
             const GeglRectangle *roi)
 {
@@ -141,21 +132,13 @@ cl_process (GeglOperation       *op,
 
   cl_int errcode = 0;
 
-  if (!cl_data)
-    {
-      const char *kernel_name[] = {"kernel_bc", NULL};
-      cl_data = gegl_cl_compile_and_build (kernel_source, kernel_name);
-    }
-
-  if (!cl_data) return 1;
-
-  CL_SAFE_CALL(errcode = gegl_clSetKernelArg(cl_data->kernel[0], 0, sizeof(cl_mem),   (void*)&in_tex));
-  CL_SAFE_CALL(errcode = gegl_clSetKernelArg(cl_data->kernel[0], 1, sizeof(cl_mem),   (void*)&out_tex));
-  CL_SAFE_CALL(errcode = gegl_clSetKernelArg(cl_data->kernel[0], 2, sizeof(cl_float), (void*)&brightness));
-  CL_SAFE_CALL(errcode = gegl_clSetKernelArg(cl_data->kernel[0], 3, sizeof(cl_float), (void*)&contrast));
+  CL_SAFE_CALL(errcode = gegl_clSetKernelArg(kernel, 0, sizeof(cl_mem),   (void*)&in_tex));
+  CL_SAFE_CALL(errcode = gegl_clSetKernelArg(kernel, 1, sizeof(cl_mem),   (void*)&out_tex));
+  CL_SAFE_CALL(errcode = gegl_clSetKernelArg(kernel, 2, sizeof(cl_float), (void*)&brightness));
+  CL_SAFE_CALL(errcode = gegl_clSetKernelArg(kernel, 3, sizeof(cl_float), (void*)&contrast));
 
   CL_SAFE_CALL(errcode = gegl_clEnqueueNDRangeKernel(gegl_cl_get_command_queue (),
-                                                     cl_data->kernel[0], 1,
+                                                     kernel, 1,
                                                      NULL, &global_worksize, NULL,
                                                      0, NULL, NULL) );
 
@@ -188,7 +171,10 @@ gegl_chant_class_init (GeglChantClass *klass)
    * of our superclasses deal with the handling on their level of abstraction)
    */
   point_filter_class->process = process;
-  point_filter_class->cl_process = cl_process;
+
+  point_filter_class->cl_process           = cl_process;
+  point_filter_class->cl_kernel_source     = kernel_source;
+  point_filter_class->cl_kernel_parameters = kernel_parameters;
 
   /* specify the name this operation is found under in the GUI/when
    * programming/in XML

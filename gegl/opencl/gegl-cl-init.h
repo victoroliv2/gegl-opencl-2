@@ -50,8 +50,9 @@ typedef struct
   cl_kernel  kernel[];
 } gegl_cl_run_data;
 
-gegl_cl_run_data *gegl_cl_compile_and_build (const char *program_source,
-                                             const char *kernel_name[]);
+gegl_cl_run_data *gegl_cl_compile_and_build (const gchar *program_source,
+                                             const gchar *kernel_name[],
+                                             const gchar *compiler_options);
 
 #ifdef __GEGL_CL_INIT_MAIN__
 

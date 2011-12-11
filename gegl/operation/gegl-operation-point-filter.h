@@ -62,8 +62,13 @@ struct _GeglOperationPointFilterClass
   gboolean (* cl_process) (GeglOperation      *self,
                            cl_mem             in_tex,
                            cl_mem             out_tex,
+                           cl_kernel          kernel,
                            const size_t global_worksize,
                            const GeglRectangle *roi);
+
+  /* OpenCL source code */
+  gchar *cl_kernel_source;
+  gchar *cl_kernel_parameters;
 };
 
 GType gegl_operation_point_filter_get_type (void) G_GNUC_CONST;
