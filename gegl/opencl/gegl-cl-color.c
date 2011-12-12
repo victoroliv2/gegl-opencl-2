@@ -48,8 +48,8 @@ gegl_cl_color_supported (const Babl *in_format, const Babl *out_format)
 #define CONV_1(x)   {conv[0] = x; conv[1] = -1;}
 #define CONV_2(x,y) {conv[0] = x; conv[1] =  y;}
 
-#define CL_ERROR {g_assert(0);}
-//#define CL_ERROR {return FALSE;}
+//#define CL_ERROR {g_assert(0);}
+#define CL_ERROR {g_printf("[OpenCL] Error in %s:%d@%s - %s\n", __FILE__, __LINE__, __func__, gegl_cl_errstring(errcode)); return FALSE;}
 
 gboolean
 gegl_cl_color_conv (cl_mem in_tex, cl_mem out_tex, const size_t size[2],
@@ -60,29 +60,24 @@ gegl_cl_color_conv (cl_mem in_tex, cl_mem out_tex, const size_t size[2],
   int conv[2] = {-1, -1};
 
   if (!gegl_cl_color_supported (in_format, out_format))
-    return FALSE;
+    CL_ERROR
 
   if (in_format == out_format)
     {
       const size_t origin[3] = {0, 0, 0};
       const size_t region[3] = {size[0], size[1], 1};
 
-      g_printf("[OpenCL] Same color space, just copying: (%s)\n", babl_get_name(in_format));
-
       /* just copy in_tex to out_tex */
       errcode = gegl_clEnqueueCopyImage (gegl_cl_get_command_queue(),
                                          in_tex, out_tex, origin, origin, region,
                                          0, NULL, NULL);
-      if (errcode != CL_SUCCESS) return FALSE;
+      if (errcode != CL_SUCCESS) CL_ERROR
 
       errcode = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
-      if (errcode != CL_SUCCESS) return FALSE;
+      if (errcode != CL_SUCCESS) CL_ERROR
     }
   else
     {
-      g_printf("[OpenCL] Converting between color formats: (%s -> %s)\n", babl_get_name(in_format),
-                                                                          babl_get_name(out_format));
-
       if      (in_format == babl_format ("RGBA float"))
         {
           if      (out_format == babl_format ("RaGaBaA float"))    CONV_1(0)
@@ -113,19 +108,19 @@ gegl_cl_color_conv (cl_mem in_tex, cl_mem out_tex, const size_t size[2],
           if (conv[i] >= 0)
             {
               errcode = gegl_clSetKernelArg(kernels_color->kernel[conv[i]], 0, sizeof(cl_mem), (void*)&in_tex);
-              if (errcode != CL_SUCCESS) return FALSE;
+              if (errcode != CL_SUCCESS) CL_ERROR
 
               errcode = gegl_clSetKernelArg(kernels_color->kernel[conv[i]], 1, sizeof(cl_mem), (void*)&out_tex);
-              if (errcode != CL_SUCCESS) return FALSE;
+              if (errcode != CL_SUCCESS) CL_ERROR
 
               errcode = gegl_clEnqueueNDRangeKernel(gegl_cl_get_command_queue (),
                                                     kernels_color->kernel[conv[i]], 2,
                                                     NULL, size, NULL,
                                                     0, NULL, NULL);
-              if (errcode != CL_SUCCESS) return FALSE;
+              if (errcode != CL_SUCCESS) CL_ERROR
 
               errcode = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
-              if (errcode != CL_SUCCESS) return FALSE;
+              if (errcode != CL_SUCCESS) CL_ERROR
             }
         }
     }

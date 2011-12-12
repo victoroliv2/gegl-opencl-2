@@ -168,7 +168,6 @@ cl_process (GeglOperation       *op,
       return errcode;
     }
 
-  g_printf("[OpenCL] Running Brightness-Constrast Kernel in region (%d %d %d %d)\n", roi->x, roi->y, roi->width, roi->height);
   return errcode;
 }
 

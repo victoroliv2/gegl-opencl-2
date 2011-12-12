@@ -80,7 +80,7 @@ struct buf_tex
 };
 
 //#define CL_ERROR {g_assert(0);}
-#define CL_ERROR {g_printf("OpenCL Error in %s:%d@%s\n", __FILE__, __LINE__, __func__); goto error;}
+#define CL_ERROR {g_printf("[OpenCL] Error in %s:%d@%s - %s\n", __FILE__, __LINE__, __func__, gegl_cl_errstring(errcode)); goto error;}
 
 static gboolean
 gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
@@ -90,11 +90,6 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
 {
   const Babl *in_format  = gegl_operation_get_format (operation, "input");
   const Babl *out_format = gegl_operation_get_format (operation, "output");
-
-  g_printf("[OpenCL ]BABL formats: (%s,%s:%d) (%s,%s:%d)\n", babl_get_name(gegl_buffer_get_format(input)),  babl_get_name(in_format),
-                                                             gegl_cl_color_supported (gegl_buffer_get_format(input), in_format),
-                                                             babl_get_name(out_format), babl_get_name(gegl_buffer_get_format(output)),
-                                                             gegl_cl_color_supported (out_format, gegl_buffer_get_format(output)));
 
   GeglOperationPointFilterClass *point_filter_class = GEGL_OPERATION_POINT_FILTER_GET_CLASS (operation);
 
@@ -120,6 +115,13 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
 
   ntex = ((result.width  / input->tile_storage->tile_width)  + 1) *
          ((result.height / input->tile_storage->tile_height) + 1);
+
+  g_printf("[OpenCL] BABL formats: (%s,%s:%d) (%s,%s:%d)\n \t Tile Size:(%d, %d)\n", babl_get_name(gegl_buffer_get_format(input)),  babl_get_name(in_format),
+                                                             gegl_cl_color_supported (gegl_buffer_get_format(input), in_format),
+                                                             babl_get_name(out_format), babl_get_name(gegl_buffer_get_format(output)),
+                                                             gegl_cl_color_supported (out_format, gegl_buffer_get_format(output)),
+                                                             input->tile_storage->tile_width,
+                                                             input->tile_storage->tile_height);
 
   input_tex.tex  = (cl_mem *) gegl_malloc(ntex * sizeof(cl_mem));
   output_tex.tex = (cl_mem *) gegl_malloc(ntex * sizeof(cl_mem));
@@ -269,7 +271,6 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
   return TRUE;
 
 error:
-  g_warning("[OpenCL] Error: %s", gegl_cl_errstring(errcode));
 
     for (i=0; i < ntex; i++)
       {
