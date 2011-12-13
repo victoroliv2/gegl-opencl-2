@@ -39,11 +39,28 @@ main (gint    argc,
   gfloat brightness = 0.5f;
   gfloat contrast   = 2.0f;
 
+  GeglBuffer *buffer;
+
   char image_name[1000] = "GEGL.png";
   if (argc > 1)
     strcpy(image_name, argv[1]);
 
   gegl_init (&argc, &argv);
+
+  g_printf("<< loading image >>\n");
+
+  /* load */
+  {
+    GeglNode *gegl, *sink,  *load;
+
+    gegl = gegl_graph (sink = gegl_node ("gegl:buffer-sink", "buffer", &buffer,
+                                         "format",  babl_format ("RGBA float"), NULL,
+                       load = gegl_node ("gegl:load", "path", image_name, NULL)));
+    gegl_node_process (sink);
+    g_object_unref (gegl);
+  }
+
+  g_printf("<< start opencl >>\n");
 
   /* process */
   {
@@ -51,12 +68,13 @@ main (gint    argc,
 
     gegl = gegl_graph(sink  = gegl_node ("gegl:png-save", "path", "out.png", NULL,
                         bc  = gegl_node ("gegl:brightness-contrast", "brightness", brightness, "contrast", contrast, NULL,
-                      load  = gegl_node ("gegl:load", "path", image_name, NULL))));
+                      load  = gegl_node ("gegl:buffer-source", "buffer", buffer, NULL))));
 
     gegl_node_process (sink);
     g_object_unref (gegl);
   }
 
+  gegl_buffer_destroy (buffer);
   gegl_exit ();
 
   return retval;
