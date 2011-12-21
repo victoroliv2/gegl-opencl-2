@@ -132,17 +132,21 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
                                                              input->tile_storage->tile_width,
                                                              input->tile_storage->tile_height);
 
+  gegl_buffer_tile_iterator_init (&in_tile_iterator,  input, result, FALSE);
+  in_iter  = gegl_buffer_tile_iterator_next (&in_tile_iterator);
+
+  ntex = 0;
+  while (in_iter)
+    {
+      ntex++;
+      in_iter  = gegl_buffer_tile_iterator_next (&in_tile_iterator);
+    }
+
   input_tex.tex  = (cl_mem *) gegl_malloc(ntex * sizeof(cl_mem));
   output_tex.tex = (cl_mem *) gegl_malloc(ntex * sizeof(cl_mem));
 
   if (input_tex.tex == NULL || output_tex.tex == NULL)
     CL_ERROR;
-
-  for (i=0; i<ntex; i++)
-    {
-      input_tex.tex [i] = NULL;
-      output_tex.tex[i] = NULL;
-    }
 
   gegl_buffer_tile_iterator_init (&in_tile_iterator,  input,  result, FALSE);
   in_iter  = gegl_buffer_tile_iterator_next (&in_tile_iterator);
@@ -181,8 +185,6 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
   if (gegl_cl_color_supported (gegl_buffer_get_format(input), in_format) == CL_COLOR_CONVERT)
     while (in_iter)
       {
-        if (!input_tex.tex[i]) continue;
-
         const size_t size[2] = {in_tile_iterator.subrect.width, in_tile_iterator.subrect.height};
         errcode = gegl_cl_color_conv (&input_tex.tex[i], &output_tex.tex[i], size, gegl_buffer_get_format(input), in_format);
 
@@ -199,8 +201,6 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
   i = 0;
   while (in_iter)
     {
-      if (!input_tex.tex[i]) continue;
-
       const size_t size[2] = {in_tile_iterator.subrect.width, in_tile_iterator.subrect.height};
 
       errcode = point_filter_class->cl_process(operation, input_tex.tex[i], output_tex.tex[i], size, &in_tile_iterator.subrect);
@@ -222,8 +222,6 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
   if (gegl_cl_color_supported (out_format, gegl_buffer_get_format(output)) == CL_COLOR_CONVERT)
     while (out_iter)
       {
-        if (!output_tex.tex[i]) continue;
-
         const size_t size[2] = {out_tile_iterator.subrect.width, out_tile_iterator.subrect.height};
         errcode = gegl_cl_color_conv (&output_tex.tex[i], &input_tex.tex[i], size, out_format, gegl_buffer_get_format(output));
 
@@ -240,8 +238,6 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
   i = 0;
   while (out_iter)
     {
-      if (!output_tex.tex[i]) continue;
-
       const size_t origin[3] = {0, 0, 0};
       const size_t region[3] = {out_tile_iterator.subrect.width, out_tile_iterator.subrect.height, 1};
 
@@ -267,8 +263,8 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
 
   for (i=0; i < ntex; i++)
     {
-      if (input_tex.tex[i])  gegl_clReleaseMemObject (input_tex.tex[i]);
-      if (output_tex.tex[i]) gegl_clReleaseMemObject (output_tex.tex[i]);
+      gegl_clReleaseMemObject (input_tex.tex[i]);
+      gegl_clReleaseMemObject (output_tex.tex[i]);
     }
 
   gegl_free(input_tex.tex);
@@ -278,11 +274,11 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
 
 error:
 
-    for (i=0; i < ntex; i++)
-      {
-        if (input_tex.tex[i])  gegl_clReleaseMemObject (input_tex.tex[i]);
-        if (output_tex.tex[i]) gegl_clReleaseMemObject (output_tex.tex[i]);
-      }
+  for (i=0; i < ntex; i++)
+    {
+      if (input_tex.tex[i])  gegl_clReleaseMemObject (input_tex.tex[i]);
+      if (output_tex.tex[i]) gegl_clReleaseMemObject (output_tex.tex[i]);
+    }
 
   if (input_tex.tex)     gegl_free(input_tex.tex);
   if (output_tex.tex)    gegl_free(output_tex.tex);
