@@ -740,7 +740,7 @@ gegl_buffer_get_tile (GeglTileSource *source,
       {
         if (!tile->tile_storage)
           {
-            gegl_tile_lock (tile);
+            gegl_tile_lock (tile, GEGL_TILE_LOCK_WRITE);
             tile->tile_storage = buffer->tile_storage;
             gegl_tile_unlock (tile);
           }

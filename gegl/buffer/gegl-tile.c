@@ -94,8 +94,11 @@ gegl_tile_new_bare (void)
   tile->tile_storage = NULL;
   tile->stored_rev = 1;
   tile->rev        = 1;
+  tile->cl_rev     = 1;
   tile->lock       = 0;
+  tile->lock_mode  = GEGL_TILE_LOCK_NONE;
   tile->data       = NULL;
+  tile->cl_data    = NULL;
 
   tile->next_shared = tile;
   tile->prev_shared = tile;
@@ -113,6 +116,7 @@ gegl_tile_dup (GeglTile *src)
 
   tile->tile_storage    = src->tile_storage;
   tile->data       = src->data;
+  tile->cl_data    = src->cl_data;
   tile->size       = src->size;
 
   tile->destroy_notify      = src->destroy_notify;
@@ -143,6 +147,22 @@ gegl_tile_new (gint size)
   tile->size = size;
 
   return tile;
+}
+
+gboolean
+gegl_tile_cl_enable (GeglTile *tile,
+                     gint width,
+                     gint height,
+                     const Babl *format)
+{
+  if (tile->cl_data == NULL)
+    {
+      // if there is no memory available,
+      // tile->cl_data will be NULL anyway
+      tile->cl_data = gegl_cl_texture_new (width, height, format,
+                                           width, tile->data);
+    }
+  return (tile->cl_data != NULL);
 }
 
 static gpointer
@@ -179,9 +199,21 @@ static gint total_unlocks = 0;
 void gegl_bt (void);
 
 void
-gegl_tile_lock (GeglTile *tile)
+gegl_tile_lock (GeglTile *tile,
+                GeglTileLockMode lock_mode)
 {
-  g_mutex_lock (tile->mutex);
+  if (tile->lock > 0)
+    if ((lock_mode & GEGL_TILE_LOCK_READ    && lock_mode == GEGL_TILE_LOCK_READ   ) ||
+        (lock_mode & GEGL_TILE_LOCK_CL_READ && lock_mode == GEGL_TILE_LOCK_CL_READ))
+      g_warning("%s: same read lock called twice, maybe it isn't necessary to lock the mutex again", G_STRFUNC);
+
+  if (lock_mode != GEGL_TILE_LOCK_NONE)
+    g_mutex_lock (tile->mutex);
+  else
+    {
+      g_warning ("%s called with GEGL_TILE_LOCK_NONE", G_STRFUNC);
+      return;
+    }
 
   if (tile->lock != 0)
     {
@@ -195,7 +227,29 @@ gegl_tile_lock (GeglTile *tile)
   tile->lock++;
   /*fprintf (stderr, "global tile locking: %i %i\n", locks, unlocks);*/
 
-  gegl_tile_unclone (tile);
+  if (lock_mode & GEGL_TILE_LOCK_WRITE || lock_mode & GEGL_TILE_LOCK_CL_WRITE)
+    gegl_tile_unclone (tile);
+
+  /* sync between CPU and OpenCL device */
+  if (tile->cl_data)
+    {
+      if (lock_mode & GEGL_TILE_LOCK_CL_READ && tile->rev > tile->cl_rev)
+        {
+          gegl_cl_texture_set (tile->cl_data, tile->data);
+          tile->cl_rev = tile->rev;
+        }
+      else if (lock_mode & GEGL_TILE_LOCK_READ && tile->cl_rev > tile->rev)
+        {
+          gegl_cl_texture_get (tile->cl_data, tile->data);
+          tile->rev = tile->cl_rev;
+        }
+      else if (lock_mode & GEGL_TILE_LOCK_WRITE && tile->cl_rev > tile->rev)
+        {
+          /* free OpenCL data */
+        }
+    }
+
+  tile->lock_mode = lock_mode;
 }
 
 static void
@@ -242,13 +296,20 @@ gegl_tile_unlock (GeglTile *tile)
       g_warning ("unlocked a tile with lock count == 0");
     }
   tile->lock--;
-  if (tile->lock == 0 &&
+  if ((tile->lock_mode & GEGL_TILE_LOCK_WRITE ||
+       tile->lock_mode & GEGL_TILE_LOCK_CL_WRITE) &&
+      tile->lock == 0 &&
       tile->z == 0)
     {
       gegl_tile_void_pyramid (tile);
     }
   if (tile->lock==0)
-    tile->rev++;
+    if      (tile->lock_mode & GEGL_TILE_LOCK_WRITE)
+      tile->rev    = MAX(tile->rev, tile->cl_rev)+1;
+    else if (tile->lock_mode & GEGL_TILE_LOCK_CL_WRITE)
+      tile->cl_rev = MAX(tile->rev, tile->cl_rev)+1;
+
+  tile->lock_mode = GEGL_TILE_LOCK_NONE;
   g_mutex_unlock (tile->mutex);
 }
 

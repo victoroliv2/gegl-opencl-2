@@ -33,6 +33,7 @@ typedef struct _GeglTile                  GeglTile;
 typedef void   (*GeglTileCallback)       (GeglTile *tile,
                                           gpointer user_data);
 
+typedef enum _GeglTileLockMode            GeglTileLockMode;
 
 #include "gegl-types.h"
 #include "gegl-tile-backend.h"

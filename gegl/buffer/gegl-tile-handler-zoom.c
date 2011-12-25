@@ -267,7 +267,7 @@ get_tile (GeglTileSource *gegl_tile_source,
         if (zoom->cache)
           gegl_tile_handler_cache_insert (zoom->cache, tile, x, y, z);
       }
-    gegl_tile_lock (tile);
+    gegl_tile_lock (tile, GEGL_TILE_LOCK_WRITE);
 
     for (i = 0; i < 2; i++)
       for (j = 0; j < 2; j++)

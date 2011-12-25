@@ -187,7 +187,7 @@ gegl_buffer_set_pixel (GeglBuffer *buffer,
             gint    offsety = gegl_tile_offset (tiledy, tile_height);
             guchar *tp;
 
-            gegl_tile_lock (tile);
+            gegl_tile_lock (tile, GEGL_TILE_LOCK_WRITE);
 
             tp = gegl_tile_get_data (tile) +
                  (offsety * tile_width + offsetx) * px_size;
@@ -470,7 +470,7 @@ gegl_buffer_iterate (GeglBuffer          *buffer,
                   }
 
                 if (write)
-                  gegl_tile_lock (tile);
+                  gegl_tile_lock (tile, GEGL_TILE_LOCK_WRITE);
 
                 tile_base = gegl_tile_get_data (tile);
                 tp        = ((guchar *) tile_base) + (offsety * tile_width + offsetx) * px_size;

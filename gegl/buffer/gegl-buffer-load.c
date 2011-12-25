@@ -320,7 +320,7 @@ gegl_buffer_load (const gchar *path)
 
 
         g_assert (tile);
-        gegl_tile_lock (tile);
+        gegl_tile_lock (tile, GEGL_TILE_LOCK_WRITE);
 
         data = gegl_tile_get_data (tile);
         g_assert (data);

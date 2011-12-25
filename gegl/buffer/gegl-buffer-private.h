@@ -25,6 +25,8 @@
 #include "gegl-tile-handler.h"
 #include "gegl-buffer-iterator.h"
 
+#include "gegl-cl.h"
+
 #define GEGL_BUFFER_CLASS(klass)    (G_TYPE_CHECK_CLASS_CAST ((klass),  GEGL_TYPE_BUFFER, GeglBufferClass))
 #define GEGL_IS_BUFFER(obj)         (G_TYPE_CHECK_INSTANCE_TYPE ((obj), GEGL_TYPE_BUFFER))
 #define GEGL_IS_BUFFER_CLASS(klass) (G_TYPE_CHECK_CLASS_TYPE ((klass),  GEGL_TYPE_BUFFER))
@@ -129,7 +131,14 @@ void            gegl_buffer_sampler           (GeglBuffer     *buffer,
                                                const Babl     *format,
                                                gpointer        sampler);
 
-
+enum _GeglTileLockMode
+{
+  GEGL_TILE_LOCK_NONE         = 0,
+  GEGL_TILE_LOCK_READ         = (1 << 0),
+  GEGL_TILE_LOCK_WRITE        = (1 << 1),
+  GEGL_TILE_LOCK_CL_READ      = (1 << 2),
+  GEGL_TILE_LOCK_CL_WRITE     = (1 << 3),
+};
 
 /* the instance size of a GeglTile is a bit large, and should if possible be
  * trimmed down
@@ -141,6 +150,8 @@ struct _GeglTile
 
   guchar          *data;        /* actual pixel data for tile, a linear buffer*/
   gint             size;        /* The size of the linear buffer */
+
+  GeglClTexture   *cl_data;     /* OpenCL pixel data for tile */
 
   GeglTileStorage *tile_storage; /* the buffer from which this tile was
                                   * retrieved needed for the tile to be able to
@@ -154,9 +165,15 @@ struct _GeglTile
   guint            stored_rev;  /* what revision was we when we from tile_storage?
                                    (currently set to 1 when loaded from disk */
 
-  gchar            lock;        /* number of times the tile is write locked
+  guint            cl_rev;      /* tile revision for OpenCL data */
+
+  gchar            lock;        /* number of times the tile is read or write locked
                                  * should in theory just have the values 0/1
+                                 * we could support multiple read locks, but don't for simplicity.
                                  */
+
+  GeglTileLockMode lock_mode;   /* current lock mode */
+
   GMutex          *mutex;
 
   /* the shared list is a doubly linked circular list */

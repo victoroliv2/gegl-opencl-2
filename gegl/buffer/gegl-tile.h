@@ -27,10 +27,16 @@ GeglTile   * gegl_tile_new_bare       (void);
 GeglTile   * gegl_tile_ref            (GeglTile         *tile);
 void         gegl_tile_unref          (GeglTile         *tile);
 
+gboolean     gegl_tile_cl_enable      (GeglTile *tile,
+                                       gint width,
+                                       gint height,
+                                       const Babl *format);
+
 /* lock a tile for writing, this would allow writing to buffers
  * later gotten with get_data()
  */
-void         gegl_tile_lock           (GeglTile         *tile);
+void         gegl_tile_lock           (GeglTile         *tile,
+                                       GeglTileLockMode lock_mode);
 
 /* unlock the tile notifying the tile that we're done manipulating
  * the data.

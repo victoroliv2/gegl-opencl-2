@@ -18,6 +18,7 @@
 
 #include <gegl.h>
 #include <gegl-buffer-backend.h>
+#include <gegl-buffer-private.h>
 
 
 #define ADD_TEST(function) g_test_add_func ("/gegl-tile/" #function, function);
@@ -52,7 +53,7 @@ set_unlock_notify (void)
   gegl_tile_set_unlock_notify (tile, unlock_callback, &callback_called);
   g_assert (! callback_called);
 
-  gegl_tile_lock (tile);
+  gegl_tile_lock (tile, GEGL_TILE_LOCK_WRITE);
   g_assert (! callback_called);
 
   gegl_tile_unlock(tile);

@@ -181,7 +181,7 @@ gboolean gegl_cl_babl_to_cl_image_format (const Babl *format,
     {
       cl_format->image_channel_order     = CL_RGBA;
       cl_format->image_channel_data_type = CL_UNORM_INT8;
-      *pixels_bytes = sizeof(cl_uchar4);
+      *pixel_bytes = sizeof(cl_uchar4);
       return TRUE;
     }
   else if ((format == babl_format ("RGBA float")      ) ||
@@ -191,7 +191,7 @@ gboolean gegl_cl_babl_to_cl_image_format (const Babl *format,
     {
       cl_format->image_channel_order     = CL_RGBA;
       cl_format->image_channel_data_type = CL_FLOAT;
-      *pixels_bytes = sizeof(cl_float4);
+      *pixel_bytes = sizeof(cl_float4);
       return TRUE;
     }
   else

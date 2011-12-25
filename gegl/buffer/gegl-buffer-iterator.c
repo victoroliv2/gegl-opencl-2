@@ -188,7 +188,7 @@ gulp:
                                                0);
          if (i->write && tile_width==i->subrect.width)
            {
-             gegl_tile_lock (i->tile);
+             gegl_tile_lock (i->tile, GEGL_TILE_LOCK_WRITE);
            }
          i->data = gegl_tile_get_data (i->tile);
 
