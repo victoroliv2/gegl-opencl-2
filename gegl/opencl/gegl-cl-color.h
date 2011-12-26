@@ -1,7 +1,7 @@
 #ifndef __GEGL_CL_COLOR_H__
 #define __GEGL_CL_COLOR_H__
 
-#include <gegl.h>
+#include "gegl.h"
 #include "gegl-cl-types.h"
 
 typedef enum
@@ -17,5 +17,9 @@ gegl_cl_color_op gegl_cl_color_supported (const Babl *in_format, const Babl *out
 
 gboolean gegl_cl_color_conv (cl_mem *in_tex, cl_mem *aux_tex, const size_t size[2],
                              const Babl *in_format, const Babl *out_format);
+
+gboolean gegl_cl_babl_to_cl_image_format (const Babl *format,
+                                          cl_image_format *cl_format,
+                                          size_t *pixel_bytes);
 
 #endif

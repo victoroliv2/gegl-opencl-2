@@ -3,7 +3,6 @@
 
 #include <glib-object.h>
 
-#include "gegl.h"
 #include "gegl-cl-types.h"
 #include "gegl-cl-init.h"
 
@@ -12,7 +11,8 @@ G_BEGIN_DECLS
 struct _GeglClTexture
 {
   cl_mem data;
-  cl_image_format format;
+  const Babl *babl_format;
+  cl_image_format tex_format;
   gint width;
   gint height;
 };
@@ -21,8 +21,8 @@ typedef struct _GeglClTexture GeglClTexture;
 
 GType           gegl_cl_texture_get_type (void) G_GNUC_CONST;
 
-GeglClTexture  *gegl_cl_texture_new      (const gint           width,
-                                          const gint           height);
+GeglClTexture *gegl_cl_texture_new (gint width, gint height, const Babl *format,
+                                    gint px_pitch, gpointer data);
 
 void            gegl_cl_texture_free     (GeglClTexture       *texture);
 

@@ -1,30 +1,42 @@
 #include "gegl.h"
 #include "gegl-cl-types.h"
 #include "gegl-cl-init.h"
+#include "gegl-cl-color.h"
 #include "gegl-cl-texture.h"
 
 GeglClTexture *
-gegl_cl_texture_new (const gint width, const gint height)
+gegl_cl_texture_new (gint width, gint height, const Babl *format,
+                     gint px_pitch, gpointer data)
 {
   cl_int errcode;
+  size_t px_size, pitch;
 
   GeglClTexture *texture = g_new (GeglClTexture, 1);
   texture->width = width;
   texture->height = height;
-  texture->format.image_channel_order     = CL_RGBA;
-  texture->format.image_channel_data_type = CL_FLOAT;
+  texture->babl_format = format;
+
+  g_assert((px_pitch > 0 && data == NULL) == FALSE);
+
+  if (!gegl_cl_babl_to_cl_image_format (format, &texture->tex_format, &px_size))
+    return NULL;
+
+  if (px_pitch == 0)
+    pitch = 0;
+  else
+    pitch = px_pitch * px_size;
+
   texture->data  = gegl_clCreateImage2D (gegl_cl_get_context(),
                                          CL_MEM_READ_WRITE,
-                                         &texture->format,
+                                         &texture->tex_format,
                                          texture->width,
                                          texture->height,
-                                         0,  NULL, &errcode);
+                                         pitch, data, &errcode);
   if (errcode != CL_SUCCESS)
-  {
-    g_warning("OpenCL Alloc Error: %s", gegl_cl_errstring(errcode));
-    g_free(texture);
-    return NULL;
-  }
+    {
+      g_free(texture);
+      return NULL;
+    }
 
   return texture;
 }
@@ -45,7 +57,7 @@ gegl_cl_texture_get (const GeglClTexture *texture,
                             texture->height,
                             1};
   gegl_clEnqueueReadImage(gegl_cl_get_command_queue(),
-                          texture->data, CL_TRUE, origin, region, 0, 0, dst,
+                          texture->data, CL_FALSE, origin, region, 0, 0, dst,
                           0, NULL, NULL);
 }
 
@@ -71,12 +83,15 @@ gegl_cl_texture_dup (const GeglClTexture *texture)
                             1};
 
   GeglClTexture *new_texture = gegl_cl_texture_new (texture->width,
-                                                    texture->height);
+                                                    texture->height,
+                                                    texture->babl_format,
+                                                    0, NULL);
 
-  gegl_clEnqueueCopyImage(gegl_cl_get_command_queue(),
-                          texture->data, new_texture->data,
-                          origin, origin, region,
-                          0, NULL, NULL);
+  if (new_texture)
+    gegl_clEnqueueCopyImage(gegl_cl_get_command_queue(),
+                            texture->data, new_texture->data,
+                            origin, origin, region,
+                            0, NULL, NULL);
   return new_texture;
 }
 
