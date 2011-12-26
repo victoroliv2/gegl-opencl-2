@@ -358,6 +358,9 @@ gegl_buffer_save (GeglBuffer          *buffer,
                                           entry->y,
                                           entry->z);
         g_assert (tile);
+
+        gegl_tile_lock (tile, GEGL_TILE_LOCK_READ);
+
         data = gegl_tile_get_data (tile);
         g_assert (data);
 
@@ -367,6 +370,8 @@ gegl_buffer_save (GeglBuffer          *buffer,
 	      if (ret != -1)
             info->offset += ret;
         }
+
+        gegl_tile_unlock (tile);
         gegl_tile_unref (tile);
         i++;
       }

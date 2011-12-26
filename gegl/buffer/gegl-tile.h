@@ -22,6 +22,8 @@
 #include <glib-object.h>
 #include "gegl-buffer-backend.h"
 
+#include "opencl/gegl-cl-texture.h"
+
 GeglTile   * gegl_tile_new            (gint             size);
 GeglTile   * gegl_tile_new_bare       (void);
 GeglTile   * gegl_tile_ref            (GeglTile         *tile);
@@ -69,5 +71,12 @@ void         gegl_tile_set_unlock_notify
                                        GeglTileCallback  unlock_notify,
                                        gpointer          unlock_notify_data);
 
+guchar      *gegl_tile_get_data       (GeglTile *tile);
+
+GeglClTexture
+            *gegl_tile_get_cl_data    (GeglTile *tile);
+
+void         gegl_tile_set_cl_dirty   (GeglTile *tile,
+                                       gboolean cl_dirty);
 
 #endif

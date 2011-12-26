@@ -25,8 +25,6 @@
 #include "gegl-tile-handler.h"
 #include "gegl-buffer-iterator.h"
 
-#include "gegl-cl.h"
-
 #define GEGL_BUFFER_CLASS(klass)    (G_TYPE_CHECK_CLASS_CAST ((klass),  GEGL_TYPE_BUFFER, GeglBufferClass))
 #define GEGL_IS_BUFFER(obj)         (G_TYPE_CHECK_INSTANCE_TYPE ((obj), GEGL_TYPE_BUFFER))
 #define GEGL_IS_BUFFER_CLASS(klass) (G_TYPE_CHECK_CLASS_TYPE ((klass),  GEGL_TYPE_BUFFER))
@@ -166,6 +164,7 @@ struct _GeglTile
                                    (currently set to 1 when loaded from disk */
 
   guint            cl_rev;      /* tile revision for OpenCL data */
+  gboolean         cl_dirty;    /* if we need to call clFinish to update tiles */
 
   gchar            lock;        /* number of times the tile is read or write locked
                                  * should in theory just have the values 0/1
@@ -190,11 +189,6 @@ struct _GeglTile
   GeglTileCallback unlock_notify;
   gpointer         unlock_notify_data;
 };
-
-#ifndef __GEGL_TILE_C
-#define gegl_tile_get_data(tile)  ((guchar*)((tile)->data))
-#endif // __GEGL_TILE_C
-
 
 /* computes the positive integer remainder (also for negative dividends)
  */

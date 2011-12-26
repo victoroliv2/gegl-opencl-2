@@ -99,6 +99,7 @@ gegl_tile_new_bare (void)
   tile->lock_mode  = GEGL_TILE_LOCK_NONE;
   tile->data       = NULL;
   tile->cl_data    = NULL;
+  tile->cl_dirty   = FALSE;
 
   tile->next_shared = tile;
   tile->prev_shared = tile;
@@ -161,6 +162,7 @@ gegl_tile_cl_enable (GeglTile *tile,
       // tile->cl_data will be NULL anyway
       tile->cl_data = gegl_cl_texture_new (width, height, format,
                                            width, tile->data);
+      if (tile->cl_data) tile->cl_rev = tile->rev;
     }
   return (tile->cl_data != NULL);
 }
@@ -237,11 +239,13 @@ gegl_tile_lock (GeglTile *tile,
         {
           gegl_cl_texture_set (tile->cl_data, tile->data);
           tile->cl_rev = tile->rev;
+          tile->cl_dirty = TRUE;
         }
       else if (lock_mode & GEGL_TILE_LOCK_READ && tile->cl_rev > tile->rev)
         {
           gegl_cl_texture_get (tile->cl_data, tile->data);
           tile->rev = tile->cl_rev;
+          tile->cl_dirty = TRUE;
         }
       else if (lock_mode & GEGL_TILE_LOCK_WRITE && tile->cl_rev > tile->rev)
         {
@@ -304,10 +308,12 @@ gegl_tile_unlock (GeglTile *tile)
       gegl_tile_void_pyramid (tile);
     }
   if (tile->lock==0)
-    if      (tile->lock_mode & GEGL_TILE_LOCK_WRITE)
-      tile->rev    = MAX(tile->rev, tile->cl_rev)+1;
-    else if (tile->lock_mode & GEGL_TILE_LOCK_CL_WRITE)
-      tile->cl_rev = MAX(tile->rev, tile->cl_rev)+1;
+    {
+      if      (tile->lock_mode & GEGL_TILE_LOCK_WRITE)
+        tile->rev    = MAX(tile->rev, tile->cl_rev)+1;
+      else if (tile->lock_mode & GEGL_TILE_LOCK_CL_WRITE)
+        tile->cl_rev = MAX(tile->rev, tile->cl_rev)+1;
+    }
 
   tile->lock_mode = GEGL_TILE_LOCK_NONE;
   g_mutex_unlock (tile->mutex);
@@ -348,11 +354,32 @@ gboolean gegl_tile_store (GeglTile *tile)
                                     tile);
 }
 
-/* for internal use, a macro poking directly at the data will be faste
+/* this call should be between
+ * gegl_tile_lock (GEGL_TILE_LOCK_READ) ... gegl_tile_unlock()
  */
-guchar *gegl_tile_get_data (GeglTile *tile)
+guchar *
+gegl_tile_get_data (GeglTile *tile)
 {
+  if (tile->cl_data && tile->cl_dirty)
+    {
+      gegl_clFinish(gegl_cl_get_command_queue());
+      tile->cl_dirty = FALSE;
+    }
   return tile->data;
+}
+
+/* this call should be between
+ * gegl_tile_lock (GEGL_TILE_LOCK_CL_READ) ... gegl_tile_unlock()
+ */
+GeglClTexture *
+gegl_tile_get_cl_data (GeglTile *tile)
+{
+  if (tile->cl_data && tile->cl_dirty)
+    {
+      gegl_clFinish(gegl_cl_get_command_queue());
+      tile->cl_dirty = FALSE;
+    }
+  return tile->cl_data;
 }
 
 void gegl_tile_set_data (GeglTile *tile,
@@ -393,4 +420,15 @@ void gegl_tile_set_unlock_notify (GeglTile         *tile,
 {
   tile->unlock_notify      = unlock_notify;
   tile->unlock_notify_data = unlock_notify_data;
+}
+
+/* if you call gegl_clFinish by yourself,
+ * use this function to reset the cl_dirty
+ * flag
+ */
+void
+gegl_tile_set_cl_dirty (GeglTile *tile,
+                        gboolean cl_dirty)
+{
+  tile->cl_dirty = cl_dirty;
 }

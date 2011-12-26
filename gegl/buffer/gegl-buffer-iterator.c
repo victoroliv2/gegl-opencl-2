@@ -38,10 +38,12 @@ typedef struct GeglBufferTileIterator
   GeglRectangle  roi;     /* the rectangular region we're iterating over */
   GeglTile      *tile;    /* current tile */
   gpointer       data;    /* current tile's data */
+  GeglClTexture *cl_data; /* current tile's data */
 
   gint           col;     /* the column currently provided for */
   gint           row;     /* the row currently provided for */
-  gboolean       write;
+  GeglTileLockMode
+                 lock_mode;
   GeglRectangle  subrect;    /* the subrect that intersected roi */
   gpointer       sub_data;   /* pointer to the subdata as indicated by subrect */
   gint           rowstride;  /* rowstride for tile, in bytes */
@@ -84,7 +86,7 @@ typedef struct GeglBufferIterators
 static void      gegl_buffer_tile_iterator_init (GeglBufferTileIterator *i,
                                                  GeglBuffer             *buffer,
                                                  GeglRectangle           roi,
-                                                 gboolean                write);
+                                                 GeglTileLockMode        lock_mode);
 static gboolean  gegl_buffer_tile_iterator_next (GeglBufferTileIterator *i);
 
 /*
@@ -116,7 +118,7 @@ static gboolean gegl_buffer_scan_compatible (GeglBuffer *bufferA,
 static void gegl_buffer_tile_iterator_init (GeglBufferTileIterator *i,
                                             GeglBuffer             *buffer,
                                             GeglRectangle           roi,
-                                            gboolean                write)
+                                            GeglTileLockMode        lock_mode)
 {
   g_assert (i);
   memset (i, 0, sizeof (GeglBufferTileIterator));
@@ -130,7 +132,7 @@ static void gegl_buffer_tile_iterator_init (GeglBufferTileIterator *i,
   i->tile = NULL;
   i->col = 0;
   i->row = 0;
-  i->write = write;
+  i->lock_mode = lock_mode;
   i->max_size = i->buffer->tile_storage->tile_width *
                 i->buffer->tile_storage->tile_height;
 }
@@ -146,6 +148,8 @@ gegl_buffer_tile_iterator_next (GeglBufferTileIterator *i)
   gint  buffer_x       = i->roi.x + buffer_shift_x;
   gint  buffer_y       = i->roi.y + buffer_shift_y;
 
+  gboolean direct_access, cl_direct_access;
+
   if (i->roi.width == 0 || i->roi.height == 0)
     return FALSE;
 
@@ -154,7 +158,14 @@ gulp:
   /* unref previously held tile */
   if (i->tile)
     {
-      if (i->write && i->subrect.width == tile_width)
+      direct_access = (i->lock_mode & GEGL_TILE_LOCK_READ || i->lock_mode & GEGL_TILE_LOCK_WRITE) &&
+                      tile_width == i->subrect.width;
+
+      cl_direct_access = (i->lock_mode & GEGL_TILE_LOCK_CL_READ || i->lock_mode & GEGL_TILE_LOCK_WRITE) &&
+                         tile_width == i->subrect.width && tile_height == i->subrect.height;
+
+      if (i->lock_mode != GEGL_TILE_LOCK_NONE &&
+          (direct_access || cl_direct_access))
         {
           gegl_tile_unlock (i->tile);
         }
@@ -186,11 +197,20 @@ gulp:
                                                gegl_tile_indice (tiledx, tile_width),
                                                gegl_tile_indice (tiledy, tile_height),
                                                0);
-         if (i->write && tile_width==i->subrect.width)
+
+         direct_access = (i->lock_mode & GEGL_TILE_LOCK_READ || i->lock_mode & GEGL_TILE_LOCK_WRITE) &&
+                         tile_width == i->subrect.width;
+
+         cl_direct_access = (i->lock_mode & GEGL_TILE_LOCK_CL_READ || i->lock_mode & GEGL_TILE_LOCK_WRITE) &&
+                            tile_width == i->subrect.width && tile_height == i->subrect.height;
+
+         if (i->lock_mode != GEGL_TILE_LOCK_NONE &&
+             (direct_access || cl_direct_access))
            {
-             gegl_tile_lock (i->tile, GEGL_TILE_LOCK_WRITE);
+             gegl_tile_lock (i->tile, i->lock_mode);
            }
          i->data = gegl_tile_get_data (i->tile);
+         i->cl_data = gegl_tile_get_cl_data (i->tile);
 
          {
          gint bpp = babl_format_get_bytes_per_pixel (i->buffer->format);
@@ -277,7 +297,9 @@ gegl_buffer_iterator_add (GeglBufferIterator  *iterator,
   if (self==0) /* The first buffer which is always scan aligned */
     {
       i->flags[self] |= GEGL_BUFFER_SCAN_COMPATIBLE;
-      gegl_buffer_tile_iterator_init (&i->i[self], i->buffer[self], i->rect[self], ((i->flags[self] & GEGL_BUFFER_WRITE) != 0) );
+      gegl_buffer_tile_iterator_init (&i->i[self], i->buffer[self], i->rect[self],
+                                      (i->flags[self] & GEGL_BUFFER_WRITE)? GEGL_TILE_LOCK_WRITE :
+                                                                            GEGL_TILE_LOCK_READ);
     }
   else
     {
@@ -289,7 +311,9 @@ gegl_buffer_iterator_add (GeglBufferIterator  *iterator,
                                        i->buffer[self], i->rect[self].x, i->rect[self].y))
         {
           i->flags[self] |= GEGL_BUFFER_SCAN_COMPATIBLE;
-          gegl_buffer_tile_iterator_init (&i->i[self], i->buffer[self], i->rect[self], ((i->flags[self] & GEGL_BUFFER_WRITE) != 0));
+          gegl_buffer_tile_iterator_init (&i->i[self], i->buffer[self], i->rect[self],
+                                          (i->flags[self] & GEGL_BUFFER_WRITE)? GEGL_TILE_LOCK_WRITE :
+                                                                                GEGL_TILE_LOCK_READ);
         }
     }
 

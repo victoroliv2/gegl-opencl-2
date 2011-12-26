@@ -263,12 +263,19 @@ gegl_buffer_get_pixel (GeglBuffer *buffer,
           {
             gint    offsetx = gegl_tile_offset (tiledx, tile_width);
             gint    offsety = gegl_tile_offset (tiledy, tile_height);
-            guchar *tp      = gegl_tile_get_data (tile) +
-                              (offsety * tile_width + offsetx) * px_size;
+            guchar *tp;
+
+            gegl_tile_lock (tile, GEGL_TILE_LOCK_READ);
+
+            tp = gegl_tile_get_data (tile) +
+                  (offsety * tile_width + offsetx) * px_size;
+
             if (fish)
               babl_process (fish, tp, buf, 1);
             else
               memcpy (buf, tp, px_size);
+
+            gegl_tile_unlock (tile);
 
             /*gegl_tile_unref (tile);*/
             buffer->hot_tile = tile;
@@ -471,6 +478,8 @@ gegl_buffer_iterate (GeglBuffer          *buffer,
 
                 if (write)
                   gegl_tile_lock (tile, GEGL_TILE_LOCK_WRITE);
+                else
+                  gegl_tile_lock (tile, GEGL_TILE_LOCK_READ);
 
                 tile_base = gegl_tile_get_data (tile);
                 tp        = ((guchar *) tile_base) + (offsety * tile_width + offsetx) * px_size;
@@ -520,8 +529,6 @@ gegl_buffer_iterate (GeglBuffer          *buffer,
                             bp += buf_stride;
                           }
                       }
-
-                    gegl_tile_unlock (tile);
                   }
                 else /* read */
                   {
@@ -561,6 +568,8 @@ gegl_buffer_iterate (GeglBuffer          *buffer,
                         bp += buf_stride;
                       }
                   }
+
+                gegl_tile_unlock (tile);
                 gegl_tile_unref (tile);
               }
             bufx += (tile_width - offsetx);
