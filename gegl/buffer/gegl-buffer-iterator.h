@@ -20,7 +20,6 @@
 #ifndef __GEGL_BUFFER_ITERATOR_H__
 #define __GEGL_BUFFER_ITERATOR_H__
 
-#include "gegl-tile.h"
 #include "gegl-buffer.h"
 
 #define GEGL_BUFFER_MAX_ITERATORS 6
@@ -29,41 +28,13 @@
 #define GEGL_BUFFER_WRITE     2
 #define GEGL_BUFFER_READWRITE (GEGL_BUFFER_READ|GEGL_BUFFER_WRITE)
 
-typedef struct GeglBufferTileIterator
-{
-  GeglBuffer    *buffer;
-  GeglRectangle  roi;     /* the rectangular region we're iterating over */
-  GeglTile      *tile;    /* current tile */
-  gpointer       data;    /* current tile's data */
-
-  gint           col;     /* the column currently provided for */
-  gint           row;     /* the row currently provided for */
-  gboolean       write;
-  GeglRectangle  subrect;    /* the subrect that intersected roi */
-  gpointer       sub_data;   /* pointer to the subdata as indicated by subrect */
-  gint           rowstride;  /* rowstride for tile, in bytes */
-
-  gint           next_col; /* used internally */
-  gint           next_row; /* used internally */
-  gint           max_size; /* maximum data buffer needed, in bytes */
-  GeglRectangle  roi2;     /* the rectangular subregion of data
-                            * in the buffer represented by this scan.
-                            */
-
-} GeglBufferTileIterator;
-
-void      gegl_buffer_tile_iterator_init (GeglBufferTileIterator *i,
-                                          GeglBuffer             *buffer,
-                                          GeglRectangle           roi,
-                                          gboolean                write);
-gboolean  gegl_buffer_tile_iterator_next (GeglBufferTileIterator *i);
-
 typedef struct GeglBufferIterator
 {
   gint          length;
   gpointer      data[GEGL_BUFFER_MAX_ITERATORS];
   GeglRectangle roi[GEGL_BUFFER_MAX_ITERATORS];
 } GeglBufferIterator;
+
 
 /**
  * gegl_buffer_iterator_new:

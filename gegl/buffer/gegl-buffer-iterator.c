@@ -32,6 +32,29 @@
 #include "gegl-tile-storage.h"
 #include "gegl-utils.h"
 
+typedef struct GeglBufferTileIterator
+{
+  GeglBuffer    *buffer;
+  GeglRectangle  roi;     /* the rectangular region we're iterating over */
+  GeglTile      *tile;    /* current tile */
+  gpointer       data;    /* current tile's data */
+
+  gint           col;     /* the column currently provided for */
+  gint           row;     /* the row currently provided for */
+  gboolean       write;
+  GeglRectangle  subrect;    /* the subrect that intersected roi */
+  gpointer       sub_data;   /* pointer to the subdata as indicated by subrect */
+  gint           rowstride;  /* rowstride for tile, in bytes */
+
+  gint           next_col; /* used internally */
+  gint           next_row; /* used internally */
+  gint           max_size; /* maximum data buffer needed, in bytes */
+  GeglRectangle  roi2;     /* the rectangular subregion of data
+                            * in the buffer represented by this scan.
+                            */
+
+} GeglBufferTileIterator;
+
 #define GEGL_BUFFER_SCAN_COMPATIBLE   128   /* should be integrated into enum */
 #define GEGL_BUFFER_FORMAT_COMPATIBLE 256   /* should be integrated into enum */
 
@@ -56,6 +79,13 @@ typedef struct GeglBufferIterators
   gpointer       buf        [GEGL_BUFFER_MAX_ITERATORS]; /* no idea */
   GeglBufferTileIterator   i[GEGL_BUFFER_MAX_ITERATORS];
 } GeglBufferIterators;
+
+
+static void      gegl_buffer_tile_iterator_init (GeglBufferTileIterator *i,
+                                                 GeglBuffer             *buffer,
+                                                 GeglRectangle           roi,
+                                                 gboolean                write);
+static gboolean  gegl_buffer_tile_iterator_next (GeglBufferTileIterator *i);
 
 /*
  *  check whether iterations on two buffers starting from the given coordinates with
@@ -83,10 +113,10 @@ static gboolean gegl_buffer_scan_compatible (GeglBuffer *bufferA,
   return TRUE;
 }
 
-void gegl_buffer_tile_iterator_init (GeglBufferTileIterator *i,
-                                     GeglBuffer             *buffer,
-                                     GeglRectangle           roi,
-                                     gboolean                write)
+static void gegl_buffer_tile_iterator_init (GeglBufferTileIterator *i,
+                                            GeglBuffer             *buffer,
+                                            GeglRectangle           roi,
+                                            gboolean                write)
 {
   g_assert (i);
   memset (i, 0, sizeof (GeglBufferTileIterator));
@@ -105,7 +135,7 @@ void gegl_buffer_tile_iterator_init (GeglBufferTileIterator *i,
                 i->buffer->tile_storage->tile_height;
 }
 
-gboolean
+static gboolean
 gegl_buffer_tile_iterator_next (GeglBufferTileIterator *i)
 {
   GeglBuffer *buffer   = i->buffer;
