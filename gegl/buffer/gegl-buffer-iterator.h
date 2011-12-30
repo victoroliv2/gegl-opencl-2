@@ -24,9 +24,13 @@
 
 #define GEGL_BUFFER_MAX_ITERATORS 6
 
-#define GEGL_BUFFER_READ      1
-#define GEGL_BUFFER_WRITE     2
+#define GEGL_BUFFER_READ      (1<<0)
+#define GEGL_BUFFER_WRITE     (1<<1)
 #define GEGL_BUFFER_READWRITE (GEGL_BUFFER_READ|GEGL_BUFFER_WRITE)
+
+#define GEGL_BUFFER_CL_READ   (1<<2)
+#define GEGL_BUFFER_CL_WRITE  (1<<3)
+#define GEGL_BUFFER_CL_READWRITE (GEGL_BUFFER_CL_READ|GEGL_BUFFER_CL_WRITE)
 
 typedef struct GeglBufferIterator
 {
@@ -35,6 +39,17 @@ typedef struct GeglBufferIterator
   GeglRectangle roi[GEGL_BUFFER_MAX_ITERATORS];
 } GeglBufferIterator;
 
+#define GEGL_BUFFER_CL_ITER_TILES 32
+
+#include "opencl/gegl-cl-texture.h"
+
+typedef struct GeglBufferClIterator
+{
+  gint           n;
+  guint          size[GEGL_BUFFER_MAX_ITERATORS][GEGL_BUFFER_CL_ITER_TILES][2];
+  GeglClTexture *tex [GEGL_BUFFER_MAX_ITERATORS][GEGL_BUFFER_CL_ITER_TILES];
+  GeglRectangle  roi [GEGL_BUFFER_MAX_ITERATORS][GEGL_BUFFER_CL_ITER_TILES];
+} GeglBufferClIterator;
 
 /**
  * gegl_buffer_iterator_new:
@@ -113,3 +128,16 @@ gboolean             gegl_buffer_iterator_next (GeglBufferIterator *iterator);
 #endif
 
 #endif
+
+
+gboolean gegl_buffer_cl_iterator_next             (GeglBufferClIterator *iterator);
+void gegl_buffer_cl_iterator_end                  (GeglBufferClIterator *iterator);
+gint gegl_buffer_cl_iterator_add                  (GeglBufferClIterator *iterator,
+                                                   GeglBuffer           *buffer,
+                                                   const GeglRectangle  *roi,
+                                                   const Babl           *format,
+                                                   guint                 flags);
+GeglBufferClIterator *gegl_buffer_cl_iterator_new (GeglBuffer           *buffer,
+                                                   const GeglRectangle  *roi,
+                                                   const Babl           *format,
+                                                   guint                 flags);

@@ -209,8 +209,10 @@ gulp:
            {
              gegl_tile_lock (i->tile, i->lock_mode);
            }
-         i->data = gegl_tile_get_data (i->tile);
-         i->cl_data = gegl_tile_get_cl_data (i->tile);
+
+         /* no need to OpenCL sync here */
+         i->data    = i->tile->data;
+         i->cl_data = i->tile->cl_data;
 
          {
          gint bpp = babl_format_get_bytes_per_pixel (i->buffer->format);
@@ -567,5 +569,354 @@ GeglBufferIterator *gegl_buffer_iterator_new (GeglBuffer          *buffer,
   /* Because the iterator is nulled above, we can forgo explicitly setting
    * i->is_finished to FALSE. */
   gegl_buffer_iterator_add (i, buffer, roi, format, flags);
+  return i;
+}
+
+/* OpenCl Iterator */
+
+typedef struct GeglBufferClIterators
+{
+  gint           n;
+  guint          size[GEGL_BUFFER_MAX_ITERATORS][GEGL_BUFFER_CL_ITER_TILES][2];
+  GeglClTexture *tex [GEGL_BUFFER_MAX_ITERATORS][GEGL_BUFFER_CL_ITER_TILES];
+  GeglRectangle  roi [GEGL_BUFFER_MAX_ITERATORS][GEGL_BUFFER_CL_ITER_TILES];
+
+  /* private */
+  gint           iterators;
+  gint           iteration_no;
+  gboolean       is_finished;
+  GeglRectangle  rect       [GEGL_BUFFER_MAX_ITERATORS];
+  const Babl    *format     [GEGL_BUFFER_MAX_ITERATORS];
+  GeglBuffer    *buffer     [GEGL_BUFFER_MAX_ITERATORS];
+  guint          flags      [GEGL_BUFFER_MAX_ITERATORS];
+  GeglClTexture *buf_tex    [GEGL_BUFFER_MAX_ITERATORS][GEGL_BUFFER_CL_ITER_TILES];
+  GSList        *tiles;
+  GeglBufferTileIterator   i[GEGL_BUFFER_MAX_ITERATORS];
+
+} GeglBufferClIterators;
+
+typedef struct TexInfo {
+  gboolean used;  /* if this buffer is currently allocated */
+  GeglClTexture *tex;
+} TexInfo;
+
+static GArray *tex_pool = NULL;
+
+static GStaticMutex cl_pool_mutex = G_STATIC_MUTEX_INIT;
+
+static GeglClTexture *iterator_tex_pool_get (gint width, gint height, const Babl *format)
+{
+  gint i;
+  g_static_mutex_lock (&cl_pool_mutex);
+
+  if (G_UNLIKELY (!tex_pool))
+    {
+      tex_pool = g_array_new (TRUE, TRUE, sizeof (TexInfo));
+    }
+  for (i=0; i<tex_pool->len; i++)
+    {
+      TexInfo *info = &g_array_index (tex_pool, TexInfo, i);
+      if (info->tex->width >= width && info->tex->height && info->tex->babl_format == format
+          && info->used == 0)
+        {
+          info->used ++;
+          g_static_mutex_unlock (&cl_pool_mutex);
+          return info->tex;
+        }
+    }
+  {
+    TexInfo info = {0, NULL};
+    info.tex = gegl_cl_texture_new (width, height, format, 0, NULL);
+    g_array_append_val (tex_pool, info);
+    g_static_mutex_unlock (&cl_pool_mutex);
+    return info.tex;
+  }
+}
+
+static void iterator_tex_pool_release (GeglClTexture *tex)
+{
+  gint i;
+  g_static_mutex_lock (&cl_pool_mutex);
+  for (i=0; i<tex_pool->len; i++)
+    {
+      TexInfo *info = &g_array_index (tex_pool, TexInfo, i);
+      if (info->tex == tex)
+        {
+          info->used --;
+          g_static_mutex_unlock (&cl_pool_mutex);
+          return;
+        }
+    }
+  g_assert (0);
+  g_static_mutex_unlock (&cl_pool_mutex);
+}
+
+static void ensure_tex (GeglBufferClIterators *i, gint no, gint k)
+{
+  if (i->buf_tex[no][k]==NULL)
+    i->buf_tex[no][k] = iterator_tex_pool_get (i->roi[no][k].width, i->roi[no][k].height, i->format[no]);
+}
+
+
+gboolean gegl_buffer_cl_iterator_next     (GeglBufferClIterator *iterator)
+{
+  GeglBufferClIterators *i = (gpointer)iterator;
+  gboolean result = FALSE;
+  gint no;
+  gint k;
+
+  if (i->is_finished)
+    g_error ("%s called on finished buffer iterator", G_STRFUNC);
+  if (i->iteration_no == 0)
+    {
+      for (no=0; no<i->iterators;no++)
+        {
+          gint j;
+          gboolean found = FALSE;
+          for (j=0; j<no; j++)
+            if (i->buffer[no]==i->buffer[j])
+              {
+                found = TRUE;
+                break;
+              }
+          if (!found)
+            gegl_buffer_lock (i->buffer[no]);
+        }
+    }
+  else
+    {
+      /* Wait processing */
+      gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
+
+      /* complete pending write work */
+      for (no=0; no<i->iterators;no++)
+        {
+          if (i->flags[no] & GEGL_BUFFER_CL_WRITE)
+            {
+              for (k=0; k < i->n; k++)
+                {
+                  gboolean cl_direct_access = ((i->flags[no] & GEGL_BUFFER_FORMAT_COMPATIBLE) &&
+                                               i->roi[no][k].width  == i->buffer[no]->tile_storage->tile_width &&
+                                               i->roi[no][k].height == i->buffer[no]->tile_storage->tile_height);
+
+                  if (!cl_direct_access)
+                    {
+                      ensure_tex (i, no, k);
+                      gegl_buffer_cl_set (i->buffer[no], &(i->roi[no][k]), i->format[no],
+                                          i->buf_tex[no][k], GEGL_AUTO_ROWSTRIDE);
+
+                      /* mark i->buf_tex[no][k] to be reusable in the next iteration */
+                      iterator_tex_pool_release (i->buf_tex[no][k]);
+                    }
+                }
+            }
+        }
+
+      /* Wait Writing */
+      gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
+    }
+
+  g_assert (i->iterators > 0);
+
+  i->n = 0;
+
+  /* then we iterate all */
+  for (no=0; no<i->iterators;no++)
+    {
+      gboolean res = TRUE;
+      gboolean cl_direct_access;
+      gint k;
+
+      for (k=0; k < GEGL_BUFFER_CL_ITER_TILES; k++)
+        {
+          if (i->flags[no] & GEGL_BUFFER_SCAN_COMPATIBLE)
+            {
+              res = gegl_buffer_tile_iterator_next (&i->i[no]);
+              if (res == FALSE) break;
+
+              /* we need to keep them around to unref later */
+              gegl_tile_ref (i->i[no].tile);
+              i->tiles = g_slist_prepend (i->tiles, i->i[no].tile);
+
+              if (no == 0)
+                {
+                  i->n++;
+                  result = res;
+                }
+              i->roi[no][k] = i->i[no].roi2;
+
+              /* since they were scan compatible this should be true */
+              g_assert (res == result);
+
+              cl_direct_access = ((i->flags[no] & GEGL_BUFFER_FORMAT_COMPATIBLE) &&
+                                  i->roi[no][k].width  == i->buffer[no]->tile_storage->tile_width &&
+                                  i->roi[no][k].height == i->buffer[no]->tile_storage->tile_height);
+
+              if (cl_direct_access)
+                {
+                  /* direct access */
+                  i->tex[no][k]=i->i[no].cl_data;
+                }
+              else
+                {
+                  ensure_tex (i, no, k);
+
+                  if (i->flags[no] & GEGL_BUFFER_READ)
+                    {
+                      gegl_buffer_cl_get (i->buffer[no], 1.0, &(i->roi[no][k]), i->format[no],
+                                          i->buf_tex[no][k], GEGL_AUTO_ROWSTRIDE);
+                    }
+
+                  i->tex[no][k]=i->buf_tex[no][k];
+                }
+            }
+          else
+            {
+              /* we copy the roi from iterator 0  */
+              i->roi[no][k] = i->roi[0][k];
+              i->roi[no][k].x += (i->rect[no].x-i->rect[0].x);
+              i->roi[no][k].y += (i->rect[no].y-i->rect[0].y);
+
+              ensure_tex (i, no, k);
+
+              if (i->flags[no] & GEGL_BUFFER_CL_READ)
+                {
+                  gegl_buffer_cl_get (i->buffer[no], 1.0, &(i->roi[no][k]), i->format[no],
+                                      i->buf_tex[no][k], GEGL_AUTO_ROWSTRIDE);
+                }
+              i->tex[no][k]=i->buf_tex[no][k];
+            }
+          i->size[no][k][0] = i->roi[no][k].width;
+          i->size[no][k][1] = i->roi[no][k].height;
+        }
+    }
+
+  gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
+
+  i->iteration_no++;
+
+  if (result == FALSE)
+    i->is_finished = TRUE;
+
+  return result;
+}
+
+void
+gegl_buffer_cl_iterator_end (GeglBufferClIterator *iterator)
+{
+  GeglBufferClIterators *i = (gpointer)iterator;
+  gint no;
+  GSList *t;
+  gint k;
+
+  if (!i->is_finished)
+    g_error ("%s called on NOT finished buffer iterator", G_STRFUNC);
+
+  gegl_clFinish( gegl_cl_get_command_queue() );
+
+  for (no=0; no<i->iterators;no++)
+    {
+      gint j;
+      gboolean found = FALSE;
+      for (j=0; j<no; j++)
+        if (i->buffer[no]==i->buffer[j])
+          {
+            found = TRUE;
+            break;
+          }
+      if (!found)
+        gegl_buffer_unlock (i->buffer[no]);
+    }
+
+  for (no=0; no<i->iterators;no++)
+    {
+      for (k=0; k < i->n; k++)
+        {
+          if (i->buf_tex[no][k])
+            iterator_tex_pool_release (i->buf_tex[no][k]);
+          i->buf_tex[no][k]=NULL;
+        }
+      g_object_unref (i->buffer[no]);
+    }
+
+  for (t = i->tiles; t; t=t->next)
+    {
+      gegl_tile_set_cl_dirty(t->data, FALSE);
+      gegl_tile_unref (t->data);
+    }
+  g_slist_free (i->tiles);
+
+  g_slice_free (GeglBufferClIterators, i);
+}
+
+gint
+gegl_buffer_cl_iterator_add (GeglBufferClIterator  *iterator,
+                             GeglBuffer            *buffer,
+                             const GeglRectangle   *roi,
+                             const Babl            *format,
+                             guint                  flags)
+{
+  GeglBufferIterators *i = (gpointer)iterator;
+  gint self = 0;
+  GeglBufferTileIterator tile_iter;
+
+  if (i->iterators+1 > GEGL_BUFFER_MAX_ITERATORS)
+    {
+      g_error ("too many iterators (%i)", i->iterators+1);
+    }
+
+  if (i->iterators == 0) /* for sanity, we zero at init */
+    {
+      memset (i, 0, sizeof (GeglBufferIterators));
+    }
+
+  self = i->iterators++;
+
+  if (!roi)
+    roi = self==0?&(buffer->extent):&(i->rect[0]);
+  i->rect[self]=*roi;
+
+  i->buffer[self]= g_object_ref (buffer);
+
+  if (format)
+    i->format[self]=format;
+  else
+    i->format[self]=buffer->format;
+  i->flags[self]=flags;
+
+  if (self==0) /* The first buffer which is always scan aligned */
+    {
+      i->flags[self] |= GEGL_BUFFER_SCAN_COMPATIBLE;
+      gegl_buffer_tile_iterator_init (&tile_iter, i->buffer[self], i->rect[self], GEGL_TILE_LOCK_NONE);
+    }
+  else
+    {
+      /* we make all subsequently added iterators share the width and height of the first one */
+      i->rect[self].width = i->rect[0].width;
+      i->rect[self].height = i->rect[0].height;
+
+      if (gegl_buffer_scan_compatible (i->buffer[0], i->rect[0].x, i->rect[0].y,
+                                       i->buffer[self], i->rect[self].x, i->rect[self].y))
+        {
+          i->flags[self] |= GEGL_BUFFER_SCAN_COMPATIBLE;
+          gegl_buffer_tile_iterator_init (&tile_iter, i->buffer[self], i->rect[self], GEGL_TILE_LOCK_NONE);
+        }
+    }
+
+  if (i->format[self] == i->buffer[self]->format)
+    {
+      i->flags[self] |= GEGL_BUFFER_FORMAT_COMPATIBLE;
+    }
+  return self;
+}
+
+GeglBufferClIterator *gegl_buffer_cl_iterator_new (GeglBuffer          *buffer,
+                                                   const GeglRectangle *roi,
+                                                   const Babl          *format,
+                                                   guint                flags)
+{
+  /* setting to zero makes some vars = FALSE or = NULL */
+  GeglBufferClIterator *i = (gpointer)g_slice_new0 (GeglBufferIterators);
+  gegl_buffer_cl_iterator_add (i, buffer, roi, format, flags);
   return i;
 }
