@@ -93,8 +93,8 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
 
   GeglOperationPointFilterClass *point_filter_class = GEGL_OPERATION_POINT_FILTER_GET_CLASS (operation);
 
-  GeglBufferTileIterator in_tile_iterator;
-  GeglBufferTileIterator out_tile_iterator;
+  GeglBufferTileIterator in_iter;
+  GeglBufferTileIterator out_iter;
 
   GeglRectangle result = *result_;
 
@@ -104,8 +104,6 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
   int ntex = 0;
   struct buf_tex input_tex;
   struct buf_tex output_tex;
-
-  gboolean in_iter = TRUE, out_iter = TRUE;
 
   /* supported babl formats up to now:
      RGBA u8
@@ -122,25 +120,17 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
   rgbau8_format.image_channel_order     = CL_RGBA;
   rgbau8_format.image_channel_data_type = CL_UNORM_INT8;
 
-  ntex = ((result.width  / input->tile_storage->tile_width)  + 1) *
-         ((result.height / input->tile_storage->tile_height) + 1);
-
-  g_printf("[OpenCL] BABL formats: (%s,%s:%d) (%s,%s:%d)\n \t Tile Size:(%d, %d)\n", babl_get_name(gegl_buffer_get_format(input)),  babl_get_name(in_format),
-                                                             gegl_cl_color_supported (gegl_buffer_get_format(input), in_format),
-                                                             babl_get_name(out_format), babl_get_name(gegl_buffer_get_format(output)),
-                                                             gegl_cl_color_supported (out_format, gegl_buffer_get_format(output)),
+  g_printf("[OpenCL] BABL formats: (%s,%s:%d) (%s,%s:%d)\n \t Tile Size:(%d, %d)\n", babl_get_name(input->format),  babl_get_name(in_format),
+                                                             gegl_cl_color_supported (input->format, in_format),
+                                                             babl_get_name(out_format), babl_get_name(output->format),
+                                                             gegl_cl_color_supported (out_format, output->format),
                                                              input->tile_storage->tile_width,
                                                              input->tile_storage->tile_height);
 
-  gegl_buffer_tile_iterator_init (&in_tile_iterator,  input, result, FALSE);
-  in_iter  = gegl_buffer_tile_iterator_next (&in_tile_iterator);
-
   ntex = 0;
-  while (in_iter)
-    {
-      ntex++;
-      in_iter  = gegl_buffer_tile_iterator_next (&in_tile_iterator);
-    }
+  gegl_buffer_tile_iterator_init (&in_iter,  input, result, FALSE);
+  while (gegl_buffer_tile_iterator_next (&in_iter))
+    ntex++;
 
   input_tex.tex  = (cl_mem *) gegl_malloc(ntex * sizeof(cl_mem));
   output_tex.tex = (cl_mem *) gegl_malloc(ntex * sizeof(cl_mem));
@@ -148,66 +138,61 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
   if (input_tex.tex == NULL || output_tex.tex == NULL)
     CL_ERROR;
 
-  gegl_buffer_tile_iterator_init (&in_tile_iterator,  input,  result, FALSE);
-  in_iter  = gegl_buffer_tile_iterator_next (&in_tile_iterator);
-
   i = 0;
-  while (in_iter)
+  gegl_buffer_tile_iterator_init (&in_iter,  input,  result, FALSE);
+  while (gegl_buffer_tile_iterator_next (&in_iter))
     {
       input_tex.tex[i]  = gegl_clCreateImage2D (gegl_cl_get_context(),
                                                 CL_MEM_COPY_HOST_PTR | CL_MEM_READ_WRITE,
-                                                (gegl_buffer_get_format(input) == babl_format ("RGBA u8"))? &rgbau8_format : &rgbaf_format,
-                                                in_tile_iterator.subrect.width, in_tile_iterator.subrect.height,
-                                                (gegl_buffer_get_format(input) == babl_format ("RGBA u8"))? input->tile_storage->tile_width * sizeof (cl_uchar4) :
-                                                                                                            input->tile_storage->tile_width * sizeof (cl_float4),
-                                                in_tile_iterator.sub_data, &errcode);
+                                                (input->format == babl_format ("RGBA u8"))? &rgbau8_format : &rgbaf_format,
+                                                in_iter.subrect.width, in_iter.subrect.height,
+                                                (input->format == babl_format ("RGBA u8"))? input->tile_storage->tile_width * sizeof (cl_uchar4) :
+                                                                                            input->tile_storage->tile_width * sizeof (cl_float4),
+                                                in_iter.sub_data, &errcode);
       if (errcode != CL_SUCCESS) CL_ERROR;
 
       output_tex.tex[i]  = gegl_clCreateImage2D (gegl_cl_get_context(),
                                                  CL_MEM_READ_WRITE,
-                                                 (gegl_buffer_get_format(output) == babl_format ("RGBA u8"))? &rgbau8_format : &rgbaf_format,
-                                                 in_tile_iterator.subrect.width, in_tile_iterator.subrect.height,
+                                                 (output->format == babl_format ("RGBA u8"))? &rgbau8_format : &rgbaf_format,
+                                                 in_iter.subrect.width, in_iter.subrect.height,
                                                  0, NULL, &errcode);
       if (errcode != CL_SUCCESS) CL_ERROR;
 
       i++;
-      in_iter  = gegl_buffer_tile_iterator_next (&in_tile_iterator);
     }
 
   errcode = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
   if (errcode != CL_SUCCESS) CL_ERROR;
 
   /* color conversion in the GPU (input) */
-  gegl_buffer_tile_iterator_init (&in_tile_iterator,  input, result, FALSE);
-  in_iter  = gegl_buffer_tile_iterator_next (&in_tile_iterator);
 
-  i = 0;
-  if (gegl_cl_color_supported (gegl_buffer_get_format(input), in_format) == CL_COLOR_CONVERT)
-    while (in_iter)
-      {
-        const size_t size[2] = {in_tile_iterator.subrect.width, in_tile_iterator.subrect.height};
-        errcode = gegl_cl_color_conv (&input_tex.tex[i], &output_tex.tex[i], size, gegl_buffer_get_format(input), in_format);
+  if (gegl_cl_color_supported (input->format, in_format) == CL_COLOR_CONVERT)
+    {
+      i = 0;
+      gegl_buffer_tile_iterator_init (&in_iter,  input, result, FALSE);
+      while(gegl_buffer_tile_iterator_next (&in_iter))
+        {
+          const size_t size[2] = {in_iter.subrect.width, in_iter.subrect.height};
+          errcode = gegl_cl_color_conv (&input_tex.tex[i], &output_tex.tex[i], size, input->format, in_format);
 
-        if (errcode == FALSE) CL_ERROR;
+          if (errcode == FALSE) CL_ERROR;
 
-        i++;
-        in_iter  = gegl_buffer_tile_iterator_next (&in_tile_iterator);
-      }
+          i++;
+        }
+    }
 
   /* Process */
-  gegl_buffer_tile_iterator_init (&in_tile_iterator,  input,  result, FALSE);
-  in_iter  = gegl_buffer_tile_iterator_next (&in_tile_iterator);
 
   i = 0;
-  while (in_iter)
+  gegl_buffer_tile_iterator_init (&in_iter,  input,  result, FALSE);
+  while (gegl_buffer_tile_iterator_next (&in_iter))
     {
-      const size_t size[2] = {in_tile_iterator.subrect.width, in_tile_iterator.subrect.height};
+      const size_t size[2] = {in_iter.subrect.width, in_iter.subrect.height};
 
-      errcode = point_filter_class->cl_process(operation, input_tex.tex[i], output_tex.tex[i], size, &in_tile_iterator.subrect);
+      errcode = point_filter_class->cl_process(operation, input_tex.tex[i], output_tex.tex[i], size, &in_iter.subrect);
       if (errcode != CL_SUCCESS) CL_ERROR;
 
       i++;
-      in_iter  = gegl_buffer_tile_iterator_next (&in_tile_iterator);
     }
 
   /* Wait Processing */
@@ -215,42 +200,40 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
   if (errcode != CL_SUCCESS) CL_ERROR;
 
   /* color conversion in the GPU (output) */
-  gegl_buffer_tile_iterator_init (&out_tile_iterator, output, result, FALSE);
-  out_iter = gegl_buffer_tile_iterator_next (&out_tile_iterator);
 
-  i = 0;
-  if (gegl_cl_color_supported (out_format, gegl_buffer_get_format(output)) == CL_COLOR_CONVERT)
-    while (out_iter)
-      {
-        const size_t size[2] = {out_tile_iterator.subrect.width, out_tile_iterator.subrect.height};
-        errcode = gegl_cl_color_conv (&output_tex.tex[i], &input_tex.tex[i], size, out_format, gegl_buffer_get_format(output));
+  if (gegl_cl_color_supported (out_format, output->format) == CL_COLOR_CONVERT)
+    {
+      i = 0;
+      gegl_buffer_tile_iterator_init (&out_iter, output, result, FALSE);
+      while (gegl_buffer_tile_iterator_next (&out_iter))
+        {
+          const size_t size[2] = {out_iter.subrect.width, out_iter.subrect.height};
+          errcode = gegl_cl_color_conv (&output_tex.tex[i], &input_tex.tex[i], size, out_format, output->format);
 
-        if (errcode == FALSE) CL_ERROR;
+          if (errcode == FALSE) CL_ERROR;
 
-        i++;
-        out_iter  = gegl_buffer_tile_iterator_next (&out_tile_iterator);
-      }
+          i++;
+        }
+    }
 
   /* GPU -> CPU */
-  gegl_buffer_tile_iterator_init (&out_tile_iterator, output, result, FALSE); /* XXX: we are writing here */
-  out_iter = gegl_buffer_tile_iterator_next (&out_tile_iterator);
 
   i = 0;
-  while (out_iter)
+  gegl_buffer_tile_iterator_init (&out_iter, output, result, FALSE); /* XXX: we are writing here */
+  while (gegl_buffer_tile_iterator_next (&out_iter))
     {
       const size_t origin[3] = {0, 0, 0};
-      const size_t region[3] = {out_tile_iterator.subrect.width, out_tile_iterator.subrect.height, 1};
+      const size_t region[3] = {out_iter.subrect.width, out_iter.subrect.height, 1};
 
       errcode = gegl_clEnqueueReadImage(gegl_cl_get_command_queue(), output_tex.tex[i], CL_FALSE,
                                          origin, region,
-                                         (gegl_buffer_get_format(output) == babl_format ("RGBA u8"))? output->tile_storage->tile_width * sizeof (cl_uchar4) :
-                                                                                                      output->tile_storage->tile_width * sizeof (cl_float4),
-                                         0, out_tile_iterator.sub_data,
+                                         (output->format == babl_format ("RGBA u8"))? output->tile_storage->tile_width * sizeof (cl_uchar4) :
+                                                                                      output->tile_storage->tile_width * sizeof (cl_float4),
+                                         0, out_iter.sub_data,
                                          0, NULL, NULL);
       if (errcode != CL_SUCCESS) CL_ERROR;
 
       i++;
-      out_iter  = gegl_buffer_tile_iterator_next (&out_tile_iterator);
     }
 
   /* Wait */
