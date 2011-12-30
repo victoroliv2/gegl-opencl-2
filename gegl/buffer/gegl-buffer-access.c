@@ -1214,3 +1214,55 @@ gegl_buffer_dup (GeglBuffer *buffer)
   return new_buffer;
 }
 
+/* OpenCL Access */
+
+void
+gegl_buffer_cl_set (GeglBuffer          *buffer,
+                    const GeglRectangle *rect,
+                    GeglClTexture       *src)
+{
+  g_return_if_fail (GEGL_IS_BUFFER (buffer));
+
+  gegl_buffer_lock (buffer);
+
+  /* magic here */
+
+  if (gegl_buffer_is_shared (buffer))
+    {
+      gegl_buffer_flush (buffer);
+    }
+
+  gegl_buffer_unlock (buffer);
+}
+
+void
+gegl_buffer_cl_get (GeglBuffer          *buffer,
+                    gdouble              scale,
+                    const GeglRectangle *rect,
+                    GeglClTexture       *dest)
+{
+  g_return_if_fail (GEGL_IS_BUFFER (buffer));
+
+  /* this is based on gegl_buffer_get_unlock */
+
+  if (!rect && scale == 1.0)
+    {
+      /* magic here */
+      return;
+    }
+  if (rect->width == 0 ||
+      rect->height == 0)
+    {
+      return;
+    }
+  if (GEGL_FLOAT_EQUAL (scale, 1.0))
+    {
+      /* magic here */
+      return;
+    }
+  else
+    {
+      /* TODO: Resampler in OpenCL */
+    }
+
+}
