@@ -105,11 +105,8 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
   struct buf_tex input_tex;
   struct buf_tex output_tex;
 
-  /* supported babl formats up to now:
-     RGBA u8
-     All formats with four floating-point channels
-     (I suppose others formats would be hard to put on GPU)
-  */
+  gegl_cl_color_op conv_in;
+  gegl_cl_color_op conv_out;
 
   cl_image_format rgbaf_format;
   cl_image_format rgbau8_format;
@@ -120,12 +117,30 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
   rgbau8_format.image_channel_order     = CL_RGBA;
   rgbau8_format.image_channel_data_type = CL_UNORM_INT8;
 
-  g_printf("[OpenCL] BABL formats: (%s,%s:%d) (%s,%s:%d)\n \t Tile Size:(%d, %d)\n", babl_get_name(input->format),  babl_get_name(in_format),
-                                                             gegl_cl_color_supported (input->format, in_format),
-                                                             babl_get_name(out_format), babl_get_name(output->format),
-                                                             gegl_cl_color_supported (out_format, output->format),
-                                                             input->tile_storage->tile_width,
-                                                             input->tile_storage->tile_height);
+  cl_image_format *in_image_format  = (input->format  == babl_format ("RGBA u8"))? &rgbau8_format : &rgbaf_format;
+  cl_image_format *out_image_format = (output->format == babl_format ("RGBA u8"))? &rgbau8_format : &rgbaf_format;
+
+  size_t in_pitch  = (input->format == babl_format ("RGBA u8"))?
+                       input->tile_storage->tile_width * sizeof (cl_uchar4) :
+                       input->tile_storage->tile_width * sizeof (cl_float4);
+  size_t out_pitch = (output->format == babl_format ("RGBA u8"))?
+                       output->tile_storage->tile_width * sizeof (cl_uchar4) :
+                       output->tile_storage->tile_width * sizeof (cl_float4);
+
+  const size_t origin_zero[3] = {0, 0, 0};
+
+  conv_in  = gegl_cl_color_supported (input->format,   in_format);
+  conv_out = gegl_cl_color_supported (out_format, output->format);
+
+  g_printf("[OpenCL] BABL formats: (%s,%s:%d) (%s,%s:%d)\n \t Tile Size:(%d, %d)\n",
+           babl_get_name(input->format),
+           babl_get_name(in_format),
+           conv_in,
+           babl_get_name(out_format),
+           babl_get_name(output->format),
+           conv_out,
+           input->tile_storage->tile_width,
+           input->tile_storage->tile_height);
 
   ntex = 0;
   gegl_buffer_tile_iterator_init (&in_iter,  input, result, FALSE);
@@ -142,18 +157,45 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
   gegl_buffer_tile_iterator_init (&in_iter,  input,  result, FALSE);
   while (gegl_buffer_tile_iterator_next (&in_iter))
     {
-      input_tex.tex[i]  = gegl_clCreateImage2D (gegl_cl_get_context(),
-                                                CL_MEM_COPY_HOST_PTR | CL_MEM_READ_WRITE,
-                                                (input->format == babl_format ("RGBA u8"))? &rgbau8_format : &rgbaf_format,
-                                                in_iter.subrect.width, in_iter.subrect.height,
-                                                (input->format == babl_format ("RGBA u8"))? input->tile_storage->tile_width * sizeof (cl_uchar4) :
-                                                                                            input->tile_storage->tile_width * sizeof (cl_float4),
-                                                in_iter.sub_data, &errcode);
-      if (errcode != CL_SUCCESS) CL_ERROR;
+      if (conv_in == CL_COLOR_NOT_SUPPORTED)
+        {
+          gpointer data;
+          const size_t region[3] = {in_iter.subrect.width, in_iter.subrect.height, 1};
+          size_t pitch;
+
+          input_tex.tex[i]  = gegl_clCreateImage2D (gegl_cl_get_context(),
+                                                    CL_MEM_ALLOC_HOST_PTR | CL_MEM_READ_WRITE,
+                                                    in_image_format,
+                                                    in_iter.subrect.width, in_iter.subrect.height,
+                                                    0, NULL, &errcode);
+          if (errcode != CL_SUCCESS) CL_ERROR;
+
+
+          data = gegl_clEnqueueMapImage(gegl_cl_get_command_queue(), input_tex.tex[i], CL_TRUE,
+                                        CL_MAP_WRITE, origin_zero, region,
+                                        &pitch, NULL,
+                                        0, NULL, NULL, &errcode);
+          if (errcode != CL_SUCCESS) CL_ERROR;
+
+          gegl_buffer_get (input, 1.0, &in_iter.roi2, in_format, data, pitch);
+
+          errcode = gegl_clEnqueueUnmapMemObject (gegl_cl_get_command_queue(), input_tex.tex[i], data,
+                                                  0, NULL, NULL);
+          if (errcode != CL_SUCCESS) CL_ERROR;
+        }
+      else
+        {
+          input_tex.tex[i]  = gegl_clCreateImage2D (gegl_cl_get_context(),
+                                                    CL_MEM_COPY_HOST_PTR | CL_MEM_READ_WRITE,
+                                                    in_image_format,
+                                                    in_iter.subrect.width, in_iter.subrect.height,
+                                                    in_pitch, in_iter.sub_data, &errcode);
+          if (errcode != CL_SUCCESS) CL_ERROR;
+        }
 
       output_tex.tex[i]  = gegl_clCreateImage2D (gegl_cl_get_context(),
                                                  CL_MEM_READ_WRITE,
-                                                 (output->format == babl_format ("RGBA u8"))? &rgbau8_format : &rgbaf_format,
+                                                 out_image_format,
                                                  in_iter.subrect.width, in_iter.subrect.height,
                                                  0, NULL, &errcode);
       if (errcode != CL_SUCCESS) CL_ERROR;
@@ -166,7 +208,7 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
 
   /* color conversion in the GPU (input) */
 
-  if (gegl_cl_color_supported (input->format, in_format) == CL_COLOR_CONVERT)
+  if (conv_in == CL_COLOR_CONVERT)
     {
       i = 0;
       gegl_buffer_tile_iterator_init (&in_iter,  input, result, FALSE);
@@ -188,8 +230,8 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
   while (gegl_buffer_tile_iterator_next (&in_iter))
     {
       const size_t size[2] = {in_iter.subrect.width, in_iter.subrect.height};
-
       errcode = point_filter_class->cl_process(operation, input_tex.tex[i], output_tex.tex[i], size, &in_iter.subrect);
+
       if (errcode != CL_SUCCESS) CL_ERROR;
 
       i++;
@@ -201,7 +243,7 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
 
   /* color conversion in the GPU (output) */
 
-  if (gegl_cl_color_supported (out_format, output->format) == CL_COLOR_CONVERT)
+  if (conv_out == CL_COLOR_CONVERT)
     {
       i = 0;
       gegl_buffer_tile_iterator_init (&out_iter, output, result, FALSE);
@@ -222,15 +264,12 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
   gegl_buffer_tile_iterator_init (&out_iter, output, result, FALSE); /* XXX: we are writing here */
   while (gegl_buffer_tile_iterator_next (&out_iter))
     {
-      const size_t origin[3] = {0, 0, 0};
       const size_t region[3] = {out_iter.subrect.width, out_iter.subrect.height, 1};
-
       errcode = gegl_clEnqueueReadImage(gegl_cl_get_command_queue(), output_tex.tex[i], CL_FALSE,
-                                         origin, region,
-                                         (output->format == babl_format ("RGBA u8"))? output->tile_storage->tile_width * sizeof (cl_uchar4) :
-                                                                                      output->tile_storage->tile_width * sizeof (cl_float4),
-                                         0, out_iter.sub_data,
+                                         origin_zero, region,
+                                         out_pitch, 0, out_iter.sub_data,
                                          0, NULL, NULL);
+
       if (errcode != CL_SUCCESS) CL_ERROR;
 
       i++;
