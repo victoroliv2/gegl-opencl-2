@@ -105,32 +105,40 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
   struct buf_tex input_tex;
   struct buf_tex output_tex;
 
+  const size_t origin_zero[3] = {0, 0, 0};
+
   gegl_cl_color_op conv_in;
   gegl_cl_color_op conv_out;
 
-  cl_image_format rgbaf_format;
-  cl_image_format rgbau8_format;
+  cl_image_format in_image_format;
+  cl_image_format out_image_format;
 
-  rgbaf_format.image_channel_order      = CL_RGBA;
-  rgbaf_format.image_channel_data_type  = CL_FLOAT;
+  size_t bpp, in_pitch, out_pitch;
 
-  rgbau8_format.image_channel_order     = CL_RGBA;
-  rgbau8_format.image_channel_data_type = CL_UNORM_INT8;
+  /* non-texturizable format! */
+  if (!gegl_cl_color_babl (in_format,  NULL, NULL) ||
+      !gegl_cl_color_babl (out_format, NULL, NULL))
+    {
+      g_warning ("[OpenCL] Non-texturizable input of output format!");
+      return FALSE;
+    }
 
-  cl_image_format *in_image_format  = (input->format  == babl_format ("RGBA u8"))? &rgbau8_format : &rgbaf_format;
-  cl_image_format *out_image_format = (output->format == babl_format ("RGBA u8"))? &rgbau8_format : &rgbaf_format;
+  if (!gegl_cl_color_babl (input->format, &in_image_format, &bpp))
+    gegl_cl_color_babl (in_format, &in_image_format, &bpp);
 
-  size_t in_pitch  = (input->format == babl_format ("RGBA u8"))?
-                       input->tile_storage->tile_width * sizeof (cl_uchar4) :
-                       input->tile_storage->tile_width * sizeof (cl_float4);
-  size_t out_pitch = (output->format == babl_format ("RGBA u8"))?
-                       output->tile_storage->tile_width * sizeof (cl_uchar4) :
-                       output->tile_storage->tile_width * sizeof (cl_float4);
+  in_pitch  = input->tile_storage->tile_width  * bpp;
 
-  const size_t origin_zero[3] = {0, 0, 0};
+  if (!gegl_cl_color_babl (output->format, &out_image_format, &bpp))
+    gegl_cl_color_babl (out_format, &out_image_format, &bpp);
+
+  out_pitch = output->tile_storage->tile_width * bpp;
 
   conv_in  = gegl_cl_color_supported (input->format,   in_format);
   conv_out = gegl_cl_color_supported (out_format, output->format);
+
+  /* no need to implement yet */
+  if (conv_out == CL_COLOR_NOT_SUPPORTED)
+    return FALSE;
 
   g_printf("[OpenCL] BABL formats: (%s,%s:%d) (%s,%s:%d)\n \t Tile Size:(%d, %d)\n",
            babl_get_name(input->format),
@@ -147,8 +155,8 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
   while (gegl_buffer_tile_iterator_next (&in_iter))
     ntex++;
 
-  input_tex.tex  = (cl_mem *) gegl_malloc(ntex * sizeof(cl_mem));
-  output_tex.tex = (cl_mem *) gegl_malloc(ntex * sizeof(cl_mem));
+  input_tex.tex  = (cl_mem *) g_new0(cl_mem, ntex);
+  output_tex.tex = (cl_mem *) g_new0(cl_mem, ntex);
 
   if (input_tex.tex == NULL || output_tex.tex == NULL)
     CL_ERROR;
@@ -165,11 +173,10 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
 
           input_tex.tex[i]  = gegl_clCreateImage2D (gegl_cl_get_context(),
                                                     CL_MEM_ALLOC_HOST_PTR | CL_MEM_READ_WRITE,
-                                                    in_image_format,
+                                                    &in_image_format,
                                                     in_iter.subrect.width, in_iter.subrect.height,
                                                     0, NULL, &errcode);
           if (errcode != CL_SUCCESS) CL_ERROR;
-
 
           data = gegl_clEnqueueMapImage(gegl_cl_get_command_queue(), input_tex.tex[i], CL_TRUE,
                                         CL_MAP_WRITE, origin_zero, region,
@@ -187,7 +194,7 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
         {
           input_tex.tex[i]  = gegl_clCreateImage2D (gegl_cl_get_context(),
                                                     CL_MEM_COPY_HOST_PTR | CL_MEM_READ_WRITE,
-                                                    in_image_format,
+                                                    &in_image_format,
                                                     in_iter.subrect.width, in_iter.subrect.height,
                                                     in_pitch, in_iter.sub_data, &errcode);
           if (errcode != CL_SUCCESS) CL_ERROR;
@@ -195,7 +202,7 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
 
       output_tex.tex[i]  = gegl_clCreateImage2D (gegl_cl_get_context(),
                                                  CL_MEM_READ_WRITE,
-                                                 out_image_format,
+                                                 &out_image_format,
                                                  in_iter.subrect.width, in_iter.subrect.height,
                                                  0, NULL, &errcode);
       if (errcode != CL_SUCCESS) CL_ERROR;
@@ -289,8 +296,8 @@ gegl_operation_point_filter_cl_process_full (GeglOperation       *operation,
       gegl_clReleaseMemObject (output_tex.tex[i]);
     }
 
-  gegl_free(input_tex.tex);
-  gegl_free(output_tex.tex);
+  g_free(input_tex.tex);
+  g_free(output_tex.tex);
 
   return TRUE;
 
@@ -302,8 +309,8 @@ error:
       if (output_tex.tex[i]) gegl_clReleaseMemObject (output_tex.tex[i]);
     }
 
-  if (input_tex.tex)     gegl_free(input_tex.tex);
-  if (output_tex.tex)    gegl_free(output_tex.tex);
+  if (input_tex.tex)     g_free(input_tex.tex);
+  if (output_tex.tex)    g_free(output_tex.tex);
 
   return FALSE;
 }
