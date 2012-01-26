@@ -74,6 +74,8 @@ struct _GeglBuffer
                                           useful for debugging */
 
   gpointer          backend;
+
+  GQueue           *cl_cache;
 };
 
 struct _GeglBufferClass

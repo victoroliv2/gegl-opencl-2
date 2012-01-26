@@ -9,6 +9,8 @@
 #include "gegl-buffer-cl-cache.h"
 #include "opencl/gegl-cl.h"
 
+//#define GEGL_CL_BUFFER_CACHE_LOG
+
 /* This is a write-back cache with write allocate */
 static GQueue cache_entries = G_QUEUE_INIT;
 
@@ -104,7 +106,9 @@ merge_entry (GeglBufferClCacheEntry *entry)
     {
       entry->locked = TRUE;
 
+#ifdef GEGL_CL_BUFFER_CACHE_LOG
       g_printf ("[OpenCL] merge texture %p {%d,%d,%d,%d} tex:%p\n", entry->buffer, entry->roi.x, entry->roi.y, entry->roi.width, entry->roi.height, entry->tex);
+#endif
 
       data = gegl_clEnqueueMapImage(gegl_cl_get_command_queue(), entry->tex, CL_TRUE,
                                     CL_MAP_READ,
@@ -134,7 +138,9 @@ gegl_buffer_cl_cache_dispose (cl_mem tex)
 
   GList *result = g_queue_find_custom (&cache_entries, tex, find_tex);
 
+#ifdef GEGL_CL_BUFFER_CACHE_LOG
   g_printf ("[OpenCL] gegl_buffer_cl_cache_dispose tex:%p\n", tex);
+#endif
 
   if (result)
     {
@@ -208,7 +214,9 @@ gegl_buffer_cl_cache_request (GeglBuffer            *buffer,
 
   *errcode_ret = cl_err;
 
+#ifdef GEGL_CL_BUFFER_CACHE_LOG
   g_printf ("[OpenCL] gegl_buffer_cl_cache_request buffer:%p {%d,%d,%d,%d} mode:%d tex:%p\n", buffer, roi->x, roi->y, roi->width, roi->height, mode, tex);
+#endif
 
   return tex;
 }
@@ -223,7 +231,9 @@ gegl_buffer_cl_cache_invalidate (GeglBuffer    *buffer,
 
   if (g_queue_is_empty (buffer->cl_cache)) return;
 
+#ifdef GEGL_CL_BUFFER_CACHE_LOG
   g_printf ("[OpenCL] gegl_buffer_cl_cache_invalidate %p {%d,%d,%d,%d}\n", buffer, roi->x, roi->y, roi->width, roi->height);
+#endif
 
   for (iter=g_queue_peek_head_link (buffer->cl_cache); iter; iter=iter->next)
     {
@@ -277,6 +287,9 @@ gegl_buffer_cl_cache_from (GeglBuffer          *buffer,
 
             if (conv == GEGL_CL_COLOR_NOT_SUPPORTED)
               {
+#ifdef GEGL_CL_BUFFER_CACHE_LOG
+                g_printf ("[OpenCL] cache hit! but GEGL_CL_COLOR_NOT_SUPPORTED (inv!) - buffer:%p {%d,%d,%d,%d}\n", entry->buffer, roi->x, roi->y, roi->width, roi->height);
+#endif
                 gegl_buffer_cl_cache_invalidate (buffer, roi);
                 return FALSE;
               }
@@ -344,14 +357,18 @@ gegl_buffer_cl_cache_from (GeglBuffer          *buffer,
 
             bump_entry (entry);
 
+#ifdef GEGL_CL_BUFFER_CACHE_LOG
             g_printf ("[OpenCL] cache hit! buffer:%p {%d,%d,%d,%d}\n", entry->buffer, roi->x, roi->y, roi->width, roi->height);
+#endif
 
             return TRUE;
           }
       }
 
   /* we have to merge entries that intersect ROI */
-  //g_printf ("[OpenCL] cache miss! buffer:%p {%d,%d,%d,%d}\n", buffer, roi->x, roi->y, roi->width, roi->height);
+#ifdef GEGL_CL_BUFFER_CACHE_LOG
+  g_printf ("[OpenCL] cache miss! buffer:%p {%d,%d,%d,%d}\n", buffer, roi->x, roi->y, roi->width, roi->height);
+#endif
   gegl_buffer_cl_cache_invalidate (buffer, roi);
 
   return FALSE;
@@ -376,7 +393,9 @@ gegl_buffer_cl_cache_clear (GeglBuffer          *buffer,
   GList *iter;
   gboolean finish = FALSE;
 
+#ifdef GEGL_CL_BUFFER_CACHE_LOG
   g_printf ("[OpenCL] gegl_buffer_cl_cache_clear buffer:%p {%d,%d,%d,%d}\n", buffer, roi->x, roi->y, roi->width, roi->height);
+#endif
 
   while (!finish)
     {
@@ -409,7 +428,9 @@ gegl_buffer_cl_cache_remove (GeglBuffer *buffer)
 {
   GList *iter;
 
+#ifdef GEGL_CL_BUFFER_CACHE_LOG
   g_printf ("[OpenCL] gegl_buffer_cl_cache_remove buffer:%p\n", buffer);
+#endif
 
   while (iter = g_queue_peek_head_link (buffer->cl_cache))
     {

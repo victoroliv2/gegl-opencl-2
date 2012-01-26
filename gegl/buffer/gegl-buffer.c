@@ -69,6 +69,8 @@
 #include "gegl-buffer-index.h"
 #include "gegl-config.h"
 
+#include "gegl-buffer-cl-cache.h"
+
 /* #define GEGL_BUFFER_DEBUG_ALLOCATIONS */
 
 /* #define GEGL_BUFFER_DEBUG_ALLOCATIONS to print allocation stack
@@ -376,6 +378,9 @@ gegl_buffer_dispose (GObject *object)
   if (handler->source &&
       GEGL_IS_TILE_STORAGE (handler->source))
     {
+      if (cl_state.is_accelerated)
+        gegl_buffer_cl_cache_remove (GEGL_BUFFER (object));
+
       gegl_buffer_void (buffer);
 #if 0
       g_object_unref (handler->source);
@@ -400,6 +405,8 @@ gegl_buffer_finalize (GObject *object)
   g_free (GEGL_BUFFER (object)->alloc_stack_trace);
   allocated_buffers_list = g_list_remove (allocated_buffers_list, object);
 #endif
+
+  g_queue_free (GEGL_BUFFER (object)->cl_cache);
 
   g_free (GEGL_BUFFER (object)->path);
   de_allocated_buffers++;
@@ -697,6 +704,8 @@ gegl_buffer_constructor (GType                  type,
     }
 
   buffer->tile_storage = gegl_buffer_tile_storage (buffer);
+
+  buffer->cl_cache = g_queue_new ();
 
   return object;
 }

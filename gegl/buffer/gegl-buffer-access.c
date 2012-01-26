@@ -40,6 +40,8 @@
 #include "gegl-tile-backend.h"
 #include "gegl-buffer-iterator.h"
 
+//#include "gegl-buffer-cl-cache.h"
+
 #if 0
 static inline void
 gegl_buffer_pixel_set (GeglBuffer *buffer,
@@ -586,12 +588,17 @@ gegl_buffer_set_unlocked (GeglBuffer          *buffer,
     }
   else
 #endif
+
   gegl_buffer_iterate (buffer, rect, src, rowstride, TRUE, format, 0);
 
   if (gegl_buffer_is_shared(buffer))
     {
       gegl_buffer_flush (buffer);
     }
+
+  /* buffer's OpenCL cache management */
+  if (cl_state.is_accelerated)
+    gegl_buffer_cl_cache_clear (buffer, rect);
 }
 
 void
@@ -948,6 +955,21 @@ gegl_buffer_get_unlocked (GeglBuffer          *buffer,
     }
 #endif
 
+  /* buffer's OpenCL cache management */
+  if (cl_state.is_accelerated)
+    {
+      if (GEGL_FLOAT_EQUAL (scale, 1.0))
+        {
+          if (gegl_buffer_cl_cache_from (buffer, rect, dest_buf, format, rowstride))
+            return;
+        }
+      else
+        {
+          /* doesn't support scaling in the GPU */
+          gegl_buffer_cl_cache_invalidate (buffer, rect);
+        }
+    }
+
   if (!rect && scale == 1.0)
     {
       gegl_buffer_iterate (buffer, NULL, dest_buf, rowstride, FALSE, format, 0);
@@ -1179,6 +1201,9 @@ gegl_buffer_clear (GeglBuffer          *dst,
   if (dst_rect->width == 0 ||
       dst_rect->height == 0)
     return;
+
+  if (cl_state.is_accelerated)
+    gegl_buffer_cl_cache_clear (dst, dst_rect);
 
   pxsize = babl_format_get_bytes_per_pixel (dst->format);
 
