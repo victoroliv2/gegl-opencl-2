@@ -749,7 +749,7 @@ gegl_processor_work (GeglProcessor *processor,
   gegl_visitor_dfs_traverse (visitor, GEGL_VISITABLE (processor->node));
   visits_list = gegl_visitor_get_visits_list (visitor);
 
-  if (gegl_config()->use_opencl && gegl_cl_is_opencl_available)
+  if (gegl_config()->use_opencl && gegl_cl_is_opencl_available())
     for (iterator = visits_list; iterator; iterator = iterator->next)
       {
         GeglNode *node = (GeglNode*) iterator->data;
