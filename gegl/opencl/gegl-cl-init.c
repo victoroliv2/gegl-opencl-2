@@ -87,6 +87,12 @@ gegl_cl_is_accelerated (void)
   return cl_state.is_accelerated;
 }
 
+gboolean
+gegl_cl_is_opencl_available (void)
+{
+    return cl_state.is_accelerated;
+}
+
 cl_platform_id
 gegl_cl_get_platform (void)
 {

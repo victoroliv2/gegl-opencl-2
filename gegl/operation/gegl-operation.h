@@ -81,7 +81,8 @@ struct _GeglOperationClass
 
   gboolean        no_cache;    /* do not create a cache for this operation */
 
-  gboolean        opencl_support;
+  gboolean        opencl_support; /* whether support a accelerated OpenCL version */
+  gint            cl_chunk_size;  /* specific CL algorithm's chunk size */
 
   /* attach this operation with a GeglNode, override this if you are creating a
    * GeglGraph, it is already defined for Filters/Sources/Composers.
