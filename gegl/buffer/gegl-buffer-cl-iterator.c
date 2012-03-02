@@ -34,6 +34,7 @@ typedef struct GeglBufferClIterators
   gboolean       is_finished;
 
   guint          flags          [GEGL_CL_BUFFER_MAX_ITERATORS];
+  gint           radius         [GEGL_CL_BUFFER_MAX_ITERATORS];
 
   GeglRectangle  rect           [GEGL_CL_BUFFER_MAX_ITERATORS]; /* the region we iterate on. They can be
                                                                    different from each other, but width
@@ -61,7 +62,8 @@ gegl_buffer_cl_iterator_add (GeglBufferClIterator  *iterator,
                              GeglBuffer            *buffer,
                              const GeglRectangle   *result,
                              const Babl            *format,
-                             guint                  flags)
+                             guint                  flags,
+                             gint                   radius)
 {
   GeglBufferClIterators *i = (gpointer)iterator;
   gint self = 0;
@@ -96,6 +98,9 @@ gegl_buffer_cl_iterator_add (GeglBufferClIterator  *iterator,
 
   gegl_cl_color_babl (buffer->format, &i->buf_cl_format_size[self]);
   gegl_cl_color_babl (format,         &i->op_cl_format_size [self]);
+
+  i->radius[self] = radius;
+  if (flags == GEGL_CL_BUFFER_WRITE && radius > 0) g_assert(FALSE);
 
   if (self!=0)
     {
@@ -155,8 +160,11 @@ gegl_buffer_cl_iterator_next (GeglBufferClIterator *iterator, gboolean *err)
           if (!found)
             gegl_buffer_lock (i->buffer[no]);
 
-          if (i->flags[no] == GEGL_CL_BUFFER_WRITE)
-            gegl_buffer_cl_cache_invalidate (i->buffer[no], &i->rect[no]);
+          if (i->flags[no] == GEGL_CL_BUFFER_WRITE
+              || (i->flags[no] == GEGL_CL_BUFFER_READ && i->radius[no] > 0))
+            {
+              gegl_buffer_cl_cache_invalidate (i->buffer[no], &i->rect[no]);
+            }
         }
     }
   else
@@ -240,10 +248,10 @@ gegl_buffer_cl_iterator_next (GeglBufferClIterator *iterator, gboolean *err)
     {
       for (j = 0; j < i->n; j++)
         {
-          GeglRectangle r = {i->rect[no].x + i->roi_all[i->roi_no+j].x,
-                             i->rect[no].y + i->roi_all[i->roi_no+j].y,
-                             i->roi_all[i->roi_no+j].width,
-                             i->roi_all[i->roi_no+j].height};
+          GeglRectangle r = {i->rect[no].x + i->roi_all[i->roi_no+j].x - i->radius[no],
+                             i->rect[no].y + i->roi_all[i->roi_no+j].y - i->radius[no],
+                             i->roi_all[i->roi_no+j].width  + 2 * i->radius[no],
+                             i->roi_all[i->roi_no+j].height + 2 * i->radius[no]};
           i->roi [no][j] = r;
           i->size[no][j] = r.width * r.height;
         }
@@ -495,7 +503,7 @@ gegl_buffer_cl_iterator_new (GeglBuffer          *buffer,
   GeglBufferClIterator *i = (gpointer)g_slice_new0 (GeglBufferClIterators);
   /* Because the iterator is nulled above, we can forgo explicitly setting
    * i->is_finished to FALSE. */
-  gegl_buffer_cl_iterator_add (i, buffer, roi, format, flags);
+  gegl_buffer_cl_iterator_add (i, buffer, roi, format, flags, 0);
   return i;
 }
 

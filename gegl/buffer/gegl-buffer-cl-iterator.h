@@ -25,7 +25,8 @@ gint gegl_buffer_cl_iterator_add (GeglBufferClIterator  *iterator,
                                   GeglBuffer            *buffer,
                                   const GeglRectangle   *roi,
                                   const Babl            *format,
-                                  guint                  flags);
+                                  guint                  flags,
+                                  gint                   radius);
 
 gboolean gegl_buffer_cl_iterator_next (GeglBufferClIterator *iterator, gboolean *err);
 

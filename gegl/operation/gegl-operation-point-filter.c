@@ -106,7 +106,7 @@ gegl_operation_point_filter_cl_process (GeglOperation       *operation,
   /* Process */
   {
     GeglBufferClIterator *i = gegl_buffer_cl_iterator_new (output,   result, out_format, GEGL_CL_BUFFER_WRITE);
-                  gint read = gegl_buffer_cl_iterator_add (i, input, result, in_format,  GEGL_CL_BUFFER_READ);
+                  gint read = gegl_buffer_cl_iterator_add (i, input, result, in_format,  GEGL_CL_BUFFER_READ, 0);
     while (gegl_buffer_cl_iterator_next (i, &err))
       {
         if (err) return FALSE;
