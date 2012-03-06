@@ -230,21 +230,26 @@ static const char* kernel_source =
 "                               __global       float4     *aux,                                     \n"
 "                               int width, int radius)                                              \n"
 "{                                                                                                  \n"
-"  const int index = (radius + get_global_id(0)) * (width + 2 * radius)                             \n"
-"                       + (radius + get_global_id (1));                                             \n"
+"  const int index = get_global_id(0) * (width + 2 * radius)                                        \n"
+"                       + get_global_id (1);                                                        \n"
 "                                                                                                   \n"
 "  int i;                                                                                           \n"
 "                                                                                                   \n"
 "  float4 mean;                                                                                     \n"
+"  float count;																						\n"
+"  count = 0;																						\n"
 "                                                                                                   \n"
 "  mean = (float4)(0.0f);                                                                           \n"
 "                                                                                                   \n"
 "  for (i=-radius; i <= radius; i++)                                                                \n"
 "   {                                                                                               \n"
-"     mean += in[index + i];                                                                        \n"
+"      if(get_global_id (1) + i < 0 || get_global_id (1) + i > width + radius - 1 )					\n"
+"         continue;																					\n"
+"      mean += in[index + i];					                                                    \n"
+"      count+= 1;																					\n"
 "   }                                                                                               \n"
 "                                                                                                   \n"
-"  aux[index] = mean / (2 * radius + 1);                                                            \n"
+"  aux[index] = mean / count;																		\n"
 "}                                                                                                  \n"
 
 "__kernel void kernel_blur_ver (__global const float4     *aux,                                     \n"
@@ -281,7 +286,8 @@ cl_box_blur (cl_mem                in_tex,
              gint                  radius)
 {
   cl_int cl_err = 0;
-  size_t global_ws[2], local_mem_size, global_mem_size;
+  size_t global_ws[2], local_ws[2],local_mem_size, global_mem_size;
+  size_t global_ws_hor[2] = {roi->height + 2 * radius,roi->width + 2 * radius};
 
   if (!cl_data)
     {
@@ -297,12 +303,6 @@ cl_box_blur (cl_mem                in_tex,
   global_ws[1] = roi->width;
   global_mem_size = sizeof(cl_float4) * (global_ws[0] + 2 * radius) * (global_ws[1] + 2 * radius);
 
-  cl_err = gegl_clEnqueueCopyBuffer (gegl_cl_get_command_queue (),
-                                     in_tex, aux_tex, 0, 0, global_mem_size, 0, NULL, NULL);
-  if (cl_err != CL_SUCCESS) return cl_err;
-
-  gegl_clEnqueueBarrier (gegl_cl_get_command_queue ());
-
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 0, sizeof(cl_mem),   (void*)&in_tex);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 1, sizeof(cl_mem),   (void*)&aux_tex);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 2, sizeof(cl_int),   (void*)&roi->width);
@@ -310,8 +310,8 @@ cl_box_blur (cl_mem                in_tex,
   if (cl_err != CL_SUCCESS) return cl_err;
 
   cl_err = gegl_clEnqueueNDRangeKernel(gegl_cl_get_command_queue (),
-                                        cl_data->kernel[1], 2,
-                                        NULL, global_ws, local_ws,
+                                        cl_data->kernel[0], 2,
+                                        NULL, global_ws_hor, local_ws,
                                         0, NULL, NULL);
   if (cl_err != CL_SUCCESS) return cl_err;
 
@@ -324,7 +324,7 @@ cl_box_blur (cl_mem                in_tex,
   if (cl_err != CL_SUCCESS) return cl_err;
 
   cl_err = gegl_clEnqueueNDRangeKernel(gegl_cl_get_command_queue (),
-                                        cl_data->kernel[2], 2,
+                                        cl_data->kernel[1], 2,
                                         NULL, global_ws, local_ws,
                                         0, NULL, NULL);
   if (cl_err != CL_SUCCESS) return cl_err;
