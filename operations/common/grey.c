@@ -59,6 +59,27 @@ process (GeglOperation       *op,
   return TRUE;
 }
 
+#include "opencl/gegl-cl.h"
+
+static cl_int
+cl_process (GeglOperation       *op,
+            cl_mem              in_tex,
+            cl_mem              out_tex,
+            size_t              global_worksize,
+            const GeglRectangle *roi)
+{
+  cl_int cl_err = 0;
+
+  cl_err = gegl_clEnqueueCopyBuffer(gegl_cl_get_command_queue(),
+                                    in_tex , out_tex , 0 , 0 ,
+                                    global_worksize* sizeof (cl_float2),
+                                    NULL, NULL, NULL);
+
+  if (CL_SUCCESS != cl_err) return cl_err;
+
+  return cl_err;
+}
+
 
 static void
 gegl_chant_class_init (GeglChantClass *klass)
@@ -71,8 +92,10 @@ gegl_chant_class_init (GeglChantClass *klass)
 
   point_filter_class->process = process;
   operation_class->prepare = prepare;
+  point_filter_class->cl_process = cl_process;
 
   operation_class->name        = "gegl:grey";
+  operation_class->opencl_support = TRUE;
   operation_class->categories  = "color";
   operation_class->description = _("Turns the image greyscale");
 }
