@@ -216,8 +216,6 @@ cl_pixelise (cl_mem                in_tex,
 
   if (!cl_data) return 1;
 
-  //gegl_clEnqueueBarrier (gegl_cl_get_command_queue ());
-
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 0, sizeof(cl_mem),   (void*)&in_tex);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 1, sizeof(cl_mem),   (void*)&aux_tex);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 2, sizeof(cl_int),   (void*)&xsize);
@@ -233,7 +231,6 @@ cl_pixelise (cl_mem                in_tex,
                                         0, NULL, NULL);
   if (cl_err != CL_SUCCESS) return cl_err;
 
-  //gegl_clEnqueueBarrier (gegl_cl_get_command_queue ());
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 0, sizeof(cl_mem),   (void*)&aux_tex);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 1, sizeof(cl_mem),   (void*)&out_tex);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 2, sizeof(cl_int),   (void*)&xsize);
@@ -300,6 +297,18 @@ process (GeglOperation       *operation,
     if (cl_process (operation, input, output, result))
       return TRUE;
 
+  gfloat* buf;
+  rect = *result;
+  rect.x -= op_area->left;
+  rect.y -= op_area->top;
+  rect.width += op_area->left + op_area->right;
+  rect.height += op_area->top + op_area->bottom;
+  buf = g_new0 (gfloat, rect.width * rect.height * 4);
+  gegl_buffer_get (input, 1.0, &rect, babl_format ("RaGaBaA float"), buf, GEGL_AUTO_ROWSTRIDE);
+  pixelise(buf, result, o->xsize, o->ysize);
+  gegl_buffer_set (output, result, babl_format ("RaGaBaA float"), buf, GEGL_AUTO_ROWSTRIDE);
+  g_free (buf);
+  
   return  TRUE;
 }
 
