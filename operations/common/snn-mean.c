@@ -326,7 +326,11 @@ cl_snn_mean (cl_mem                in_tex,
 
   global_ws[0] = roi->width;
   global_ws[1] = roi->height;
+<<<<<<< HEAD
  
+=======
+
+>>>>>>> upstream/gsoc2011-opencl-2
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 0, sizeof(cl_mem),   (void*)&in_tex);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 1, sizeof(cl_int),   (void*)&src_rect->width);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 2, sizeof(cl_int),   (void*)&src_rect->height);
@@ -366,11 +370,18 @@ cl_process (GeglOperation       *operation,
       if (err) return FALSE;
       for (j=0; j < i->n; j++)
         {
+<<<<<<< HEAD
           cl_err = cl_snn_mean(i->tex[read][j], i->tex[0][j], &i->roi[read][j], &i->roi[0][j], o->radius,o->pairs);
           if (cl_err != CL_SUCCESS)
             {
               g_warning("[OpenCL] Error in %s [GeglOperationPointFilter] Kernel\n",
                         GEGL_OPERATION_CLASS (operation)->name);
+=======
+          cl_err = cl_snn_mean(i->tex[read][j], i->tex[0][j], &i->roi[read][j], &i->roi[0][j], ceil(o->radius), o->pairs);
+          if (cl_err != CL_SUCCESS)
+            {
+              g_warning("[OpenCL] Error %s gegl:snn-mean", gegl_cl_errstring(cl_err));
+>>>>>>> upstream/gsoc2011-opencl-2
               return FALSE;
             }
         }

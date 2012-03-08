@@ -230,6 +230,7 @@ static const char* kernel_source =
 "                               __global       float4     *aux,                                     \n"
 "                               int width, int radius)                                              \n"
 "{                                                                                                  \n"
+<<<<<<< HEAD
 "  const int index = get_global_id(0) * (width + 2 * radius)                                        \n"
 "                       + get_global_id (1);                                                        \n"
 "                                                                                                   \n"
@@ -238,11 +239,20 @@ static const char* kernel_source =
 "  float4 mean;                                                                                     \n"
 "  float count;																						\n"
 "  count = 0;																						\n"
+=======
+"  const int in_index = get_global_id(0) * (width + 2 * radius)                                     \n"
+"                       + (radius + get_global_id (1));                                             \n"
+"                                                                                                   \n"
+"  const int aux_index = get_global_id(0) * width + get_global_id (1);                              \n"
+"  int i;                                                                                           \n"
+"  float4 mean;                                                                                     \n"
+>>>>>>> upstream/gsoc2011-opencl-2
 "                                                                                                   \n"
 "  mean = (float4)(0.0f);                                                                           \n"
 "                                                                                                   \n"
 "  for (i=-radius; i <= radius; i++)                                                                \n"
 "   {                                                                                               \n"
+<<<<<<< HEAD
 "      if(get_global_id (1) + i < 0 || get_global_id (1) + i > width + radius - 1 )					\n"
 "         continue;																					\n"
 "      mean += in[index + i];					                                                    \n"
@@ -250,12 +260,19 @@ static const char* kernel_source =
 "   }                                                                                               \n"
 "                                                                                                   \n"
 "  aux[index] = mean / count;																		\n"
+=======
+"     mean += in[in_index + i];                                                                     \n"
+"   }                                                                                               \n"
+"                                                                                                   \n"
+"  aux[aux_index] = mean / (2 * radius + 1);                                                        \n"
+>>>>>>> upstream/gsoc2011-opencl-2
 "}                                                                                                  \n"
 
 "__kernel void kernel_blur_ver (__global const float4     *aux,                                     \n"
 "                               __global       float4     *out,                                     \n"
 "                               int width, int radius)                                              \n"
 "{                                                                                                  \n"
+<<<<<<< HEAD
 "  const int index = (radius + get_global_id(0)) * (width + 2 * radius)                             \n"
 "                       + (radius + get_global_id (1));                                             \n"
 "                                                                                                   \n"
@@ -263,13 +280,23 @@ static const char* kernel_source =
 "                                                                                                   \n"
 "  int i;                                                                                           \n"
 "                                                                                                   \n"
+=======
+"  const int aux_index = (radius + get_global_id(0)) * width + get_global_id (1);                   \n"
+"                                                                                                   \n"
+"  const int out_index = get_global_id(0) * width + get_global_id (1);                              \n"
+"  int i;                                                                                           \n"
+>>>>>>> upstream/gsoc2011-opencl-2
 "  float4 mean;                                                                                     \n"
 "                                                                                                   \n"
 "  mean = (float4)(0.0f);                                                                           \n"
 "                                                                                                   \n"
 "  for (i=-radius; i <= radius; i++)                                                                \n"
 "   {                                                                                               \n"
+<<<<<<< HEAD
 "     mean += aux[index + i * (width + 2 * radius)];                                                \n"
+=======
+"     mean += aux[aux_index + i * width];                                                           \n"
+>>>>>>> upstream/gsoc2011-opencl-2
 "   }                                                                                               \n"
 "                                                                                                   \n"
 "  out[out_index] = mean / (2 * radius + 1);                                                        \n"
@@ -286,8 +313,12 @@ cl_box_blur (cl_mem                in_tex,
              gint                  radius)
 {
   cl_int cl_err = 0;
+<<<<<<< HEAD
   size_t global_ws[2], local_ws[2],local_mem_size, global_mem_size;
   size_t global_ws_hor[2] = {roi->height + 2 * radius,roi->width + 2 * radius};
+=======
+  size_t global_ws_hor[2], global_ws_ver[2];
+>>>>>>> upstream/gsoc2011-opencl-2
 
   if (!cl_data)
     {
@@ -297,11 +328,19 @@ cl_box_blur (cl_mem                in_tex,
 
   if (!cl_data) return 1;
 
+<<<<<<< HEAD
   local_ws[0] = 16;
   local_ws[1] = 16;
   global_ws[0] = roi->height;
   global_ws[1] = roi->width;
   global_mem_size = sizeof(cl_float4) * (global_ws[0] + 2 * radius) * (global_ws[1] + 2 * radius);
+=======
+  global_ws_hor[0] = roi->height + 2 * radius;
+  global_ws_hor[1] = roi->width;
+
+  global_ws_ver[0] = roi->height;
+  global_ws_ver[1] = roi->width;
+>>>>>>> upstream/gsoc2011-opencl-2
 
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 0, sizeof(cl_mem),   (void*)&in_tex);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 1, sizeof(cl_mem),   (void*)&aux_tex);
@@ -311,7 +350,11 @@ cl_box_blur (cl_mem                in_tex,
 
   cl_err = gegl_clEnqueueNDRangeKernel(gegl_cl_get_command_queue (),
                                         cl_data->kernel[0], 2,
+<<<<<<< HEAD
                                         NULL, global_ws_hor, local_ws,
+=======
+                                        NULL, global_ws_hor, NULL,
+>>>>>>> upstream/gsoc2011-opencl-2
                                         0, NULL, NULL);
   if (cl_err != CL_SUCCESS) return cl_err;
 
@@ -325,7 +368,11 @@ cl_box_blur (cl_mem                in_tex,
 
   cl_err = gegl_clEnqueueNDRangeKernel(gegl_cl_get_command_queue (),
                                         cl_data->kernel[1], 2,
+<<<<<<< HEAD
                                         NULL, global_ws, local_ws,
+=======
+                                        NULL, global_ws_ver, NULL,
+>>>>>>> upstream/gsoc2011-opencl-2
                                         0, NULL, NULL);
   if (cl_err != CL_SUCCESS) return cl_err;
 
@@ -349,7 +396,11 @@ cl_process (GeglOperation       *operation,
 
   GeglBufferClIterator *i = gegl_buffer_cl_iterator_new (output,   result, out_format, GEGL_CL_BUFFER_WRITE);
                 gint read = gegl_buffer_cl_iterator_add_2 (i, input, result, in_format,  GEGL_CL_BUFFER_READ, op_area->left, op_area->right, op_area->top, op_area->bottom);
+<<<<<<< HEAD
                 gint aux  = gegl_buffer_cl_iterator_add_2 (i, NULL, result, in_format,  GEGL_CL_BUFFER_AUX, op_area->left, op_area->right, op_area->top, op_area->bottom);
+=======
+                gint aux  = gegl_buffer_cl_iterator_add_2 (i, NULL, result, in_format,  GEGL_CL_BUFFER_AUX, 0, 0, op_area->top, op_area->bottom);
+>>>>>>> upstream/gsoc2011-opencl-2
   while (gegl_buffer_cl_iterator_next (i, &err))
     {
       if (err) return FALSE;

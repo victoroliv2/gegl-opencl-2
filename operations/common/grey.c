@@ -68,6 +68,7 @@ cl_process (GeglOperation       *op,
             size_t              global_worksize,
             const GeglRectangle *roi)
 {
+<<<<<<< HEAD
  
   cl_int cl_err = 0;
   int stride = 8; /*YA float*/
@@ -78,6 +79,15 @@ cl_process (GeglOperation       *op,
 	  NULL, NULL, NULL);
 
   cl_err = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
+=======
+  cl_int cl_err = 0;
+
+  cl_err = gegl_clEnqueueCopyBuffer(gegl_cl_get_command_queue(),
+                                    in_tex , out_tex , 0 , 0 ,
+                                    global_worksize* sizeof (cl_float2),
+                                    NULL, NULL, NULL);
+
+>>>>>>> upstream/gsoc2011-opencl-2
   if (CL_SUCCESS != cl_err) return cl_err;
 
   return cl_err;
@@ -96,10 +106,14 @@ gegl_chant_class_init (GeglChantClass *klass)
   point_filter_class->process = process;
   operation_class->prepare = prepare;
   point_filter_class->cl_process = cl_process;
+<<<<<<< HEAD
 
   operation_class->opencl_support = TRUE;
+=======
+>>>>>>> upstream/gsoc2011-opencl-2
 
   operation_class->name        = "gegl:grey";
+  operation_class->opencl_support = TRUE;
   operation_class->categories  = "color";
   operation_class->description = _("Turns the image greyscale");
 }

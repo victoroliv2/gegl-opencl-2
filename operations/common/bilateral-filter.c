@@ -170,10 +170,17 @@ cl_process (GeglOperation       *operation,
     if (err) return FALSE;
     for (j=0; j < i->n; j++)
     {
+<<<<<<< HEAD
       cl_err = cl_bilateral_filter(i->tex[read][j], i->tex[0][j], i->size[0][j], &i->roi[0][j], o->blur_radius, o->edge_preservation);
       if (cl_err != CL_SUCCESS)
       {
         g_warning("[OpenCL] Error in %s [GeglOperationAreaFilter] Kernel\n",
+=======
+      cl_err = cl_bilateral_filter(i->tex[read][j], i->tex[0][j], i->size[0][j], &i->roi[0][j], ceil(o->blur_radius), o->edge_preservation);
+      if (cl_err != CL_SUCCESS)
+      {
+        g_warning("[OpenCL] Error in gegl:bilateral-filter\n",
+>>>>>>> upstream/gsoc2011-opencl-2
           GEGL_OPERATION_CLASS (operation)->name);
         return FALSE;
       }

@@ -96,6 +96,7 @@ process (GeglOperation       *op,
 #include "opencl/gegl-cl.h"
 
 static const char* kernel_source =
+<<<<<<< HEAD
 "__constant sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE |   \n"
 "                    CLK_ADDRESS_NONE                       |   \n"
 "                    CLK_FILTER_NEAREST;                        \n"
@@ -112,6 +113,21 @@ static const char* kernel_source =
 "  out_v.w   =  in_v.w;                                         \n"
 "  out[gid]=out_v;                                              \n"
 "}                                                              \n";
+=======
+"__kernel void kernel_levels(__global const float4     *in,      \n"
+"                            __global       float4     *out,     \n"
+"                            float in_offset,                    \n"
+"                            float out_offset,                   \n"
+"                            float scale)                        \n"
+"{                                                               \n"
+"  int gid = get_global_id(0);                                   \n"
+"  float4 in_v  = in[gid];                                       \n"
+"  float4 out_v;                                                 \n"
+"  out_v.xyz = (in_v.xyz - in_offset) * scale + out_offset;      \n"
+"  out_v.w   =  in_v.w;                                          \n"
+"  out[gid]  =  out_v;                                           \n"
+"}                                                               \n";
+>>>>>>> upstream/gsoc2011-opencl-2
 
 static gegl_cl_run_data *cl_data = NULL;
 
@@ -128,14 +144,19 @@ cl_process (GeglOperation       *op,
    */
 
   GeglChantO *o = GEGL_CHANT_PROPERTIES (op);
+<<<<<<< HEAD
   size_t gbl_size[1];
   //gbl_size[0]= global_worksize[1];
+=======
+
+>>>>>>> upstream/gsoc2011-opencl-2
   gfloat      in_range;
   gfloat      out_range;
   gfloat      in_offset;
   gfloat      out_offset;
   gfloat      scale;
 
+<<<<<<< HEAD
   in_offset  = o->in_low * 1.0;
   out_offset = o->out_low * 1.0;
   in_range   = o->in_high-o->in_low;
@@ -143,6 +164,15 @@ cl_process (GeglOperation       *op,
 
   if (in_range == 0.0)
 	  in_range = 0.00000001;
+=======
+  in_offset = o->in_low * 1.0;
+  out_offset = o->out_low * 1.0;
+  in_range = o->in_high-o->in_low;
+  out_range = o->out_high-o->out_low;
+
+  if (in_range == 0.0)
+    in_range = 0.00000001;
+>>>>>>> upstream/gsoc2011-opencl-2
 
   scale = out_range/in_range;
 
@@ -150,7 +180,11 @@ cl_process (GeglOperation       *op,
 
   if (!cl_data)
     {
+<<<<<<< HEAD
       const char *kernel_name[] = {"kernel_bc", NULL};
+=======
+      const char *kernel_name[] = {"kernel_levels", NULL};
+>>>>>>> upstream/gsoc2011-opencl-2
       cl_data = gegl_cl_compile_and_build (kernel_source, kernel_name);
     }
 
@@ -164,15 +198,25 @@ cl_process (GeglOperation       *op,
   if (cl_err != CL_SUCCESS) return cl_err;
 
   cl_err = gegl_clEnqueueNDRangeKernel(gegl_cl_get_command_queue (),
+<<<<<<< HEAD
                                        cl_data->kernel[0], 1,
                                        NULL, &global_worksize, NULL,
                                        0, NULL, NULL);
 
+=======
+                                        cl_data->kernel[0], 1,
+                                        NULL, &global_worksize, NULL,
+                                        0, NULL, NULL);
+>>>>>>> upstream/gsoc2011-opencl-2
   if (cl_err != CL_SUCCESS) return cl_err;
 
   return cl_err;
 }
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> upstream/gsoc2011-opencl-2
 
 static void
 gegl_chant_class_init (GeglChantClass *klass)
@@ -184,6 +228,7 @@ gegl_chant_class_init (GeglChantClass *klass)
   point_filter_class = GEGL_OPERATION_POINT_FILTER_CLASS (klass);
 
   point_filter_class->process = process;
+  point_filter_class->cl_process = cl_process;
 
   operation_class->prepare = prepare;
 
@@ -192,6 +237,7 @@ gegl_chant_class_init (GeglChantClass *klass)
   operation_class->opencl_support = TRUE;
 
   operation_class->name        = "gegl:levels";
+  operation_class->opencl_support = TRUE;
   operation_class->categories  = "color";
   operation_class->description =
         _("Remaps the intensity range of the image");

@@ -138,12 +138,21 @@ static gegl_cl_run_data *cl_data = NULL;
 
 static cl_int
 cl_edge_sobel (cl_mem              in_tex,
+<<<<<<< HEAD
 			   cl_mem              out_tex,
 			   size_t              global_worksize,
 			   const GeglRectangle *roi,
 			   gboolean            horizontal,
 			   gboolean            vertical,
 			   gboolean            keep_signal) 
+=======
+               cl_mem              out_tex,
+               size_t              global_worksize,
+               const GeglRectangle *roi,
+               gboolean            horizontal,
+               gboolean            vertical,
+               gboolean            keep_signal)
+>>>>>>> upstream/gsoc2011-opencl-2
 {
   cl_int cl_err = 0;
   if (!cl_data)
@@ -152,33 +161,57 @@ cl_edge_sobel (cl_mem              in_tex,
     cl_data = gegl_cl_compile_and_build(kernel_source, kernel_name);
   }
   if (!cl_data)  return 0;
+<<<<<<< HEAD
   
+=======
+
+>>>>>>> upstream/gsoc2011-opencl-2
   cl_int n_horizontal  = horizontal;
   cl_int n_vertical    = vertical;
   cl_int n_keep_signal = keep_signal;
   const size_t gbl_size[2] = {roi->width,roi->height};
+<<<<<<< HEAD
   
+=======
+
+>>>>>>> upstream/gsoc2011-opencl-2
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 0, sizeof(cl_mem), (void*)&in_tex);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 1, sizeof(cl_mem), (void*)&out_tex);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 2, sizeof(cl_int), (void*)&n_horizontal);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 3, sizeof(cl_int), (void*)&n_vertical);
+<<<<<<< HEAD
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 4, sizeof(cl_int), (void*)&n_keep_signal); 
   if (cl_err != CL_SUCCESS) return cl_err;
   
+=======
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 4, sizeof(cl_int), (void*)&n_keep_signal);
+  if (cl_err != CL_SUCCESS) return cl_err;
+
+>>>>>>> upstream/gsoc2011-opencl-2
   cl_err = gegl_clEnqueueNDRangeKernel(gegl_cl_get_command_queue(),
                                        cl_data->kernel[0], 2,
                                        NULL, gbl_size, NULL,
                                        0, NULL, NULL);
   if (cl_err != CL_SUCCESS) return cl_err;
+<<<<<<< HEAD
   
+=======
+
+>>>>>>> upstream/gsoc2011-opencl-2
   return cl_err;
 }
 
 static gboolean
 cl_process (GeglOperation       *operation,
+<<<<<<< HEAD
 			GeglBuffer          *input,
 			GeglBuffer          *output,
 			const GeglRectangle *result)
+=======
+      GeglBuffer          *input,
+      GeglBuffer          *output,
+      const GeglRectangle *result)
+>>>>>>> upstream/gsoc2011-opencl-2
 {
   const Babl *in_format  = gegl_operation_get_format (operation, "input");
   const Babl *out_format = gegl_operation_get_format (operation, "output");
@@ -188,7 +221,11 @@ cl_process (GeglOperation       *operation,
 
   GeglOperationAreaFilter *op_area = GEGL_OPERATION_AREA_FILTER (operation);
   GeglChantO *o = GEGL_CHANT_PROPERTIES (operation);
+<<<<<<< HEAD
   
+=======
+
+>>>>>>> upstream/gsoc2011-opencl-2
   GeglBufferClIterator *i = gegl_buffer_cl_iterator_new (output,result, out_format, GEGL_CL_BUFFER_WRITE);
                 gint read = gegl_buffer_cl_iterator_add_2 (i, input, result, in_format, GEGL_CL_BUFFER_READ,op_area->left, op_area->right, op_area->top, op_area->bottom);
   while (gegl_buffer_cl_iterator_next (i, &err))
@@ -196,11 +233,18 @@ cl_process (GeglOperation       *operation,
     if (err) return FALSE;
     for (j=0; j < i->n; j++)
     {
+<<<<<<< HEAD
       cl_err = cl_edge_sobel(i->tex[read][j], i->tex[0][j],i->size[0][j],&i->roi[0][j],o->horizontal,o->vertical,o->keep_signal);
       if (cl_err != CL_SUCCESS)
       {
         g_warning("[OpenCL] Error in %s [GeglOperationAreaFilter] Kernel\n",
           GEGL_OPERATION_CLASS (operation)->name);
+=======
+      cl_err = cl_edge_sobel(i->tex[read][j], i->tex[0][j], i->size[0][j],&i->roi[0][j], o->horizontal, o->vertical, o->keep_signal);
+      if (cl_err != CL_SUCCESS)
+      {
+        g_warning("[OpenCL] Error in gegl:edge-sobel\n");
+>>>>>>> upstream/gsoc2011-opencl-2
         return FALSE;
       }
     }
