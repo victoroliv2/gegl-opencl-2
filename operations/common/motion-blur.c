@@ -148,7 +148,7 @@ cl_motion_blur (cl_mem                in_tex,
                 gfloat                offset_y)
 {
   cl_int cl_err = 0;
-  size_t local_ws[2], global_ws[2], local_mem_size;
+  size_t global_ws[2];
   
   if (!cl_data)
   {
@@ -158,11 +158,8 @@ cl_motion_blur (cl_mem                in_tex,
   
   if (!cl_data) return 1;
   
-  local_ws[0] = 16;
-  local_ws[1] = 16;
   global_ws[0] = roi->width;
   global_ws[1] = roi->height;
-//  local_mem_size = sizeof(cl_float4) * (local_ws[0] + 2 * radius) * (local_ws[1] + 2 * radius);
   
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0],  0, sizeof(cl_mem),   (void*)&in_tex);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0],  1, sizeof(cl_int),   (void*)&src_rect->width);
@@ -214,7 +211,7 @@ cl_process (GeglOperation       *operation,
     if (err) return FALSE;
     for (j=0; j < i->n; j++)
     {
-      cl_err = cl_motion_blur(i->tex[read][j], i->tex[0][j], i->size[0][j], &i->roi[0][j], src_rect, num_steps, offset_x, offset_y);
+      cl_err = cl_motion_blur(i->tex[read][j], i->tex[0][j], i->size[0][j], &i->roi[0][j], &i->roi[read][j], num_steps, offset_x, offset_y);
       if (cl_err != CL_SUCCESS)
       {
         g_warning("[OpenCL] Error in %s [GeglOperationAreaFilter] Kernel\n",
