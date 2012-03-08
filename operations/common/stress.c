@@ -434,7 +434,7 @@ process (GeglOperation       *operation,
   GeglRectangle compute;
   compute = gegl_operation_get_required_for_output (operation, "input",result);
 
-  if (cl_state.is_accelerated)
+  if (o->radius < 501 && cl_state.is_accelerated)
     if(cl_process(operation, input, output, result))
       return TRUE;
 
