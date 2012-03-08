@@ -252,11 +252,25 @@ cl_noise_reduction (cl_mem                in_tex,
 	cl_int n_src_stride  = roi->width + iterations * 2;
 	cl_int cl_err = 0;
 
-	/*cl_mem temp_tex;*/
+	cl_mem temp_tex;
+
 	gint stride = 16; /*R'G'B'A float*/
 
-// 	temp_tex = gegl_clCreateBuffer(gegl_cl_get_context(),CL_MEM_READ_WRITE,
-// 		       src_roi->width * src_roi->height * stride, NULL, &cl_err);
+
+	temp_tex = gegl_clCreateBuffer (gegl_cl_get_context(),
+		           CL_MEM_READ_WRITE,
+		           src_roi->width * src_roi->height * stride,
+		           NULL, &cl_err);
+	if (cl_err != CL_SUCCESS) return cl_err;
+
+
+	cl_err = gegl_clEnqueueCopyBuffer(gegl_cl_get_command_queue(),
+					in_tex , temp_tex , 0 , 0 ,
+					src_roi->width * src_roi->height * stride,
+					NULL, NULL, NULL);
+
+	cl_err = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
+	if (CL_SUCCESS != cl_err) return cl_err;
 
 	if (!cl_data)
 	{
@@ -271,13 +285,13 @@ cl_noise_reduction (cl_mem                in_tex,
 		if (i > 0)
 		{
 			cl_mem temp = aux_tex;
-			aux_tex = in_tex;
-			in_tex = temp;		
+			aux_tex     = temp_tex;
+			temp_tex    = temp;		
 		}
 		gbl_size_tmp[0] = roi->width  + 2 * (iterations - 1 -i);
 		gbl_size_tmp[1] = roi->height + 2 * (iterations - 1 -i);
 
-		cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 0, sizeof(cl_mem), (void*)&in_tex);
+		cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 0, sizeof(cl_mem), (void*)&temp_tex);
 		cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 1, sizeof(cl_int), (void*)&n_src_stride);
 		cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 2, sizeof(cl_mem), (void*)&aux_tex);
 		cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 3, sizeof(cl_int), (void*)&n_src_stride);
@@ -310,7 +324,8 @@ cl_noise_reduction (cl_mem                in_tex,
 	cl_err = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
 	if (CL_SUCCESS != cl_err) return cl_err;
 
-	/*if(aux_tex)     gegl_clReleaseMemObject(temp_tex);*/
+	if(temp_tex)    gegl_clReleaseMemObject(temp_tex);
+
 	return cl_err;
 }
 
