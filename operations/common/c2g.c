@@ -276,7 +276,7 @@ static const char* kernel_source =
 "                     const __global float  *radiuses,                 \n"
 "                     const __global float  *lut_cos,                  \n"
 "                     const __global float  *lut_sin,                  \n"
-"                     const __global float2 *dst_buf,                  \n"
+"                           __global float2 *dst_buf,                  \n"
 "                                    int     radius,                   \n"
 "                                    int     samples,                  \n"
 "                                    int     iterations)               \n"
