@@ -134,22 +134,24 @@ static void prepare (GeglOperation *operation)
 #include "buffer/gegl-buffer-cl-iterator.h"
 
 static const char* kernel_source =
-"kernel void calc_block_color(global float4 *in,                       \n"
-"                             global float4 *out,                      \n"
+"__kernel void calc_block_color(__global float4 *in,                   \n"
+"                             __global float4 *out,                    \n"
 "                             int xsize,                               \n"
 "                             int ysize,                               \n"
-"                             int corr_x,                              \n"
-"                             int corr_y,                              \n"
-"                             int src_width,                           \n"
-"                             int dst_width)                           \n"
+"                             int roi_x,                               \n"
+"                             int roi_y,                               \n"
+"                             int line_width,                          \n"
+"                             int block_count_x )                      \n"
 "{                                                                     \n"
 "    int gidx = get_global_id(0);                                      \n"
 "    int gidy = get_global_id(1);                                      \n"
+"    int cx = roi_x / xsize + gidx;                                    \n"
+"    int cy = roi_y / ysize + gidy;                                    \n"
 "                                                                      \n"
 "    float weight   = 1.0f / (xsize * ysize);                          \n"
 "                                                                      \n"
-"    int px = gidx * xsize + xsize - corr_x;                           \n"
-"    int py = gidy * ysize + ysize - corr_y;                           \n"
+"    int px = cx * xsize + xsize - roi_x;                              \n"
+"    int py = cy * ysize + ysize - roi_y;                              \n"
 "                                                                      \n"
 "    int i,j;                                                          \n"
 "    float4 col = 0.0f;                                                \n"
@@ -157,35 +159,28 @@ static const char* kernel_source =
 "    {                                                                 \n"
 "        for (i = px;i < px + xsize; ++i)                              \n"
 "        {                                                             \n"
-"            col += in[j * src_width + i];                             \n"
+"            col += in[j * line_width + i];                            \n"
 "        }                                                             \n"
 "    }                                                                 \n"
-"    int block_count_x = (dst_width - 1) / xsize + 2;                  \n"
 "    out[gidy * block_count_x + gidx] = col * weight;                  \n"
 "                                                                      \n"
 "}                                                                     \n"
 "                                                                      \n"
-"kernel void kernel_pixelise (global float4 *in,                       \n"
-"                             global float4 *out,                      \n"
+"__kernel void kernel_pixelise (__global float4 *in,                   \n"
+"                             __global float4 *out,                    \n"
 "                             int xsize,                               \n"
 "                             int ysize,                               \n"
-"                             int corr_x,                              \n"
-"                             int corr_y)                              \n"
+"                             int roi_x,                               \n"
+"                             int roi_y,                               \n"
+"                             int block_count_x)                       \n"
 "{                                                                     \n"
 "    int gidx = get_global_id(0);                                      \n"
 "    int gidy = get_global_id(1);                                      \n"
 "                                                                      \n"
 "    int src_width  = get_global_size(0);                              \n"
-"    int src_height  = get_global_size(1);                             \n"
-"    int block_count_x = (src_width - 1) / xsize + 2;                  \n"
-"    int block_count_y = (src_height - 1) / ysize + 2;                 \n"
-"                                                                      \n"
-"    int mx = ((gidx%xsize)+corr_x)/xsize;                             \n"
-"    int my = ((gidy%ysize)+corr_y)/ysize;                             \n"
-"    int cx = (gidx/xsize)+mx;                                         \n"
-"    int cy = (gidy/ysize)+my;                                         \n"
-"                                                                      \n"
-"    out[gidx + (gidy) * src_width] = in[cy * block_count_x + cx];     \n"
+"    int cx = (gidx + roi_x) / xsize - roi_x / xsize;                  \n"
+"    int cy = (gidy + roi_y) / ysize - roi_y / ysize;                  \n"
+"    out[gidx + gidy * src_width] = in[cx + cy * block_count_x];       \n"
 "}                                                                     \n";
 
 static gegl_cl_run_data *cl_data = NULL;
@@ -200,13 +195,7 @@ cl_pixelise (cl_mem                in_tex,
              gint                  ysize)
 {
   cl_int cl_err = 0;
-  cl_int corr_x = roi->x % xsize;
-  cl_int corr_y = roi->y % ysize;
   const size_t gbl_size[2]= {roi->width, roi->height};
-  size_t gbl_size_tmp[2];
-  gbl_size_tmp[0] = CELL_X(gbl_size[0] - 1, xsize) + 2;
-  gbl_size_tmp[1] = CELL_Y(gbl_size[1] - 1, ysize) + 2;
-
 
   if (!cl_data)
   {
@@ -216,14 +205,22 @@ cl_pixelise (cl_mem                in_tex,
 
   if (!cl_data) return 1;
 
+  gint cx0 = CELL_X(roi->x ,xsize);
+  gint cy0 = CELL_Y(roi->y ,ysize);
+  gint block_count_x = CELL_X(roi->x+roi->width - 1, xsize)-cx0 + 1;
+  gint block_count_y = CELL_Y(roi->y+roi->height - 1, ysize)-cy0 + 1;
+  cl_int line_width=roi->width + 2 * xsize;
+
+  size_t gbl_size_tmp[2]={block_count_x,block_count_y};
+
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 0, sizeof(cl_mem),   (void*)&in_tex);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 1, sizeof(cl_mem),   (void*)&aux_tex);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 2, sizeof(cl_int),   (void*)&xsize);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 3, sizeof(cl_int),   (void*)&ysize);
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 4, sizeof(cl_int),   (void*)&corr_x);
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 5, sizeof(cl_int),   (void*)&corr_y);
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 6, sizeof(cl_int),   (void*)&src_rect->width);
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 7, sizeof(cl_int),   (void*)&roi->width);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 4, sizeof(cl_int),   (void*)&roi->x);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 5, sizeof(cl_int),   (void*)&roi->y);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 6, sizeof(cl_int),   (void*)&line_width);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 7, sizeof(cl_int),   (void*)&block_count_x);
   if (cl_err != CL_SUCCESS) return cl_err;
   cl_err = gegl_clEnqueueNDRangeKernel(gegl_cl_get_command_queue (),
                                         cl_data->kernel[0], 2,
@@ -235,23 +232,23 @@ cl_pixelise (cl_mem                in_tex,
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 1, sizeof(cl_mem),   (void*)&out_tex);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 2, sizeof(cl_int),   (void*)&xsize);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 3, sizeof(cl_int),   (void*)&ysize);
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 4, sizeof(cl_int),   (void*)&corr_x);
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 5, sizeof(cl_int),   (void*)&corr_y);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 4, sizeof(cl_int),   (void*)&roi->x);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 5, sizeof(cl_int),   (void*)&roi->y);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 6, sizeof(cl_int),   (void*)&block_count_x);
   if (cl_err != CL_SUCCESS) return cl_err;
   cl_err = gegl_clEnqueueNDRangeKernel(gegl_cl_get_command_queue (),
                                         cl_data->kernel[1], 2,
                                         NULL, gbl_size, NULL,
                                         0, NULL, NULL);
   if (cl_err != CL_SUCCESS) return cl_err;
-
   return cl_err;
 }
 
 static gboolean
 cl_process (GeglOperation       *operation,
-      GeglBuffer          *input,
-      GeglBuffer          *output,
-      const GeglRectangle *result)
+            GeglBuffer          *input,
+            GeglBuffer          *output,
+            const GeglRectangle *result)
 {
   const Babl *in_format  = gegl_operation_get_format (operation, "input");
   const Babl *out_format = gegl_operation_get_format (operation, "output");
@@ -273,7 +270,7 @@ cl_process (GeglOperation       *operation,
       cl_err = cl_pixelise(i->tex[read][j], i->tex[aux][j], i->tex[0][j],&i->roi[read][j], &i->roi[0][j], o->xsize,o->ysize);
       if (cl_err != CL_SUCCESS)
       {
-        g_warning("[OpenCL] Error in box-blur: %s\n", gegl_cl_errstring(cl_err));
+        g_warning("[OpenCL] Error in pixelise: %s\n", gegl_cl_errstring(cl_err));
         return FALSE;
       }
     }
@@ -283,9 +280,9 @@ cl_process (GeglOperation       *operation,
 
 static gboolean
 process (GeglOperation       *operation,
-     GeglBuffer          *input,
-     GeglBuffer          *output,
-     const GeglRectangle *result)
+         GeglBuffer          *input,
+         GeglBuffer          *output,
+         const GeglRectangle *result)
 {
   GeglRectangle rect;
   GeglChantO *o = GEGL_CHANT_PROPERTIES (operation);
@@ -308,7 +305,6 @@ process (GeglOperation       *operation,
   pixelise(buf, result, o->xsize, o->ysize);
   gegl_buffer_set (output, result, babl_format ("RaGaBaA float"), buf, GEGL_AUTO_ROWSTRIDE);
   g_free (buf);
-  
   return  TRUE;
 }
 
@@ -324,7 +320,6 @@ gegl_chant_class_init (GeglChantClass *klass)
 
   filter_class->process    = process;
   operation_class->prepare = prepare;
-
   operation_class->categories  = "blur";
   operation_class->name        = "gegl:pixelise";
   operation_class->opencl_support = TRUE;
