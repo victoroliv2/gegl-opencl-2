@@ -224,146 +224,145 @@ static const char* kernel_source =
 "    dst_buf[dst_offset]       = (sum/convert_float4(count));          \n"
 "    dst_buf[dst_offset].w     = cur.w;                                \n"
 "}                                                                     \n"
-
-"__kernel void transfer(__global float4 * in,							\n"
-"					    int               in_width,						\n"
-"					    __global float4 * out							\n"
-"){																		\n"
-"	int gidx = get_global_id(0);										\n"
-"	int gidy = get_global_id(1);										\n"
-"	int width = get_global_size(0);										\n"
-"	out[gidy * width + gidx] = in[gidy * in_width + gidx];				\n"
-"}																		\n";
+"__kernel void transfer(__global float4 * in,                          \n"
+"              int               in_width,                             \n"
+"              __global float4 * out)                                  \n"
+"{                                                                     \n"
+"    int gidx = get_global_id(0);                                      \n"
+"    int gidy = get_global_id(1);                                      \n"
+"    int width = get_global_size(0);                                   \n"
+"    out[gidy * width + gidx] = in[gidy * in_width + gidx];            \n"
+"}                                                                     \n";
 
 static gegl_cl_run_data *cl_data = NULL;
 
 static cl_int
 cl_noise_reduction (cl_mem                in_tex,
-					cl_mem                aux_tex,
-					cl_mem                out_tex,
-					size_t                global_worksize,
-					const GeglRectangle  *src_roi,
-					const GeglRectangle  *roi,
-					const int             iterations)
-{	
-	int i = 0;
-	size_t gbl_size_tmp[2];
+          cl_mem                aux_tex,
+          cl_mem                out_tex,
+          size_t                global_worksize,
+          const GeglRectangle  *src_roi,
+          const GeglRectangle  *roi,
+          const int             iterations)
+{  
+  int i = 0;
+  size_t gbl_size_tmp[2];
 
-	cl_int n_src_stride  = roi->width + iterations * 2;
-	cl_int cl_err = 0;
+  cl_int n_src_stride  = roi->width + iterations * 2;
+  cl_int cl_err = 0;
 
-	cl_mem temp_tex;
+  cl_mem temp_tex;
 
-	gint stride = 16; /*R'G'B'A float*/
-
-
-	temp_tex = gegl_clCreateBuffer (gegl_cl_get_context(),
-		           CL_MEM_READ_WRITE,
-		           src_roi->width * src_roi->height * stride,
-		           NULL, &cl_err);
-	if (cl_err != CL_SUCCESS) return cl_err;
+  gint stride = 16; /*R'G'B'A float*/
 
 
-	cl_err = gegl_clEnqueueCopyBuffer(gegl_cl_get_command_queue(),
-					in_tex , temp_tex , 0 , 0 ,
-					src_roi->width * src_roi->height * stride,
-					NULL, NULL, NULL);
+  temp_tex = gegl_clCreateBuffer (gegl_cl_get_context(),
+               CL_MEM_READ_WRITE,
+               src_roi->width * src_roi->height * stride,
+               NULL, &cl_err);
+  if (cl_err != CL_SUCCESS) return cl_err;
 
-	cl_err = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
-	if (CL_SUCCESS != cl_err) return cl_err;
 
-	if (!cl_data)
-	{
-		const char *kernel_name[] ={"noise_reduction_cl","transfer", NULL};
-		cl_data = gegl_cl_compile_and_build(kernel_source, kernel_name);
-	}
-	if (!cl_data)  return 0;
+  cl_err = gegl_clEnqueueCopyBuffer(gegl_cl_get_command_queue(),
+          in_tex , temp_tex , 0 , 0 ,
+          src_roi->width * src_roi->height * stride,
+          NULL, NULL, NULL);
 
-	
-	for (i = 0;i<iterations;++i)
-	{
-		if (i > 0)
-		{
-			cl_mem temp = aux_tex;
-			aux_tex     = temp_tex;
-			temp_tex    = temp;		
-		}
-		gbl_size_tmp[0] = roi->width  + 2 * (iterations - 1 -i);
-		gbl_size_tmp[1] = roi->height + 2 * (iterations - 1 -i);
+  cl_err = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
+  if (CL_SUCCESS != cl_err) return cl_err;
 
-		cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 0, sizeof(cl_mem), (void*)&temp_tex);
-		cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 1, sizeof(cl_int), (void*)&n_src_stride);
-		cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 2, sizeof(cl_mem), (void*)&aux_tex);
-		cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 3, sizeof(cl_int), (void*)&n_src_stride);
-		if (cl_err != CL_SUCCESS) return cl_err;
+  if (!cl_data)
+  {
+    const char *kernel_name[] ={"noise_reduction_cl","transfer", NULL};
+    cl_data = gegl_cl_compile_and_build(kernel_source, kernel_name);
+  }
+  if (!cl_data)  return 0;
 
-	    cl_err = gegl_clEnqueueNDRangeKernel(
-			gegl_cl_get_command_queue(), cl_data->kernel[0],
-			2, NULL,
-			gbl_size_tmp, NULL,
-			0, NULL, NULL);
+  cl_mem tmptex = temp_tex;
+  for (i = 0;i<iterations;++i)
+  {
+    if (i > 0)
+    {
+      cl_mem temp = aux_tex;
+      aux_tex     = temp_tex;
+      temp_tex    = temp;    
+    }
+    gbl_size_tmp[0] = roi->width  + 2 * (iterations - 1 -i);
+    gbl_size_tmp[1] = roi->height + 2 * (iterations - 1 -i);
 
-		cl_err = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
-		if (CL_SUCCESS != cl_err) return cl_err;
-	}
+    cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 0, sizeof(cl_mem), (void*)&temp_tex);
+    cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 1, sizeof(cl_int), (void*)&n_src_stride);
+    cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 2, sizeof(cl_mem), (void*)&aux_tex);
+    cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 3, sizeof(cl_int), (void*)&n_src_stride);
+    if (cl_err != CL_SUCCESS) return cl_err;
 
-	gbl_size_tmp[0] = roi->width ;
-	gbl_size_tmp[1] = roi->height;
+      cl_err = gegl_clEnqueueNDRangeKernel(
+      gegl_cl_get_command_queue(), cl_data->kernel[0],
+      2, NULL,
+      gbl_size_tmp, NULL,
+      0, NULL, NULL);
 
-	cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 0, sizeof(cl_mem), (void*)&aux_tex);
-	cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 1, sizeof(cl_int), (void*)&n_src_stride);
-	cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 2, sizeof(cl_mem), (void*)&out_tex);
-	if (cl_err != CL_SUCCESS) return cl_err;
+    cl_err = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
+    if (CL_SUCCESS != cl_err) return cl_err;
+  }
 
-	cl_err = gegl_clEnqueueNDRangeKernel(
-		gegl_cl_get_command_queue(), cl_data->kernel[1],
-		2, NULL,
-		gbl_size_tmp, NULL,
-		0, NULL, NULL);
+  gbl_size_tmp[0] = roi->width ;
+  gbl_size_tmp[1] = roi->height;
 
-	cl_err = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
-	if (CL_SUCCESS != cl_err) return cl_err;
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 0, sizeof(cl_mem), (void*)&aux_tex);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 1, sizeof(cl_int), (void*)&n_src_stride);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 2, sizeof(cl_mem), (void*)&out_tex);
+  if (cl_err != CL_SUCCESS) return cl_err;
 
-	if(temp_tex)    gegl_clReleaseMemObject(temp_tex);
+  cl_err = gegl_clEnqueueNDRangeKernel(
+    gegl_cl_get_command_queue(), cl_data->kernel[1],
+    2, NULL,
+    gbl_size_tmp, NULL,
+    0, NULL, NULL);
 
-	return cl_err;
+  cl_err = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
+  if (CL_SUCCESS != cl_err) return cl_err;
+
+  if(tmptex)    gegl_clReleaseMemObject(tmptex);
+
+  return cl_err;
 }
 
 static gboolean
 cl_process (GeglOperation       *operation,
-			GeglBuffer          *input,
-			GeglBuffer          *output,
-			const GeglRectangle *result)
+      GeglBuffer          *input,
+      GeglBuffer          *output,
+      const GeglRectangle *result)
 {
-	const Babl *in_format  = gegl_operation_get_format (operation, "input");
-	const Babl *out_format = gegl_operation_get_format (operation, "output");
-	gint err;
-	gint j;
-	cl_int cl_err;
+  const Babl *in_format  = gegl_operation_get_format (operation, "input");
+  const Babl *out_format = gegl_operation_get_format (operation, "output");
+  gint err;
+  gint j;
+  cl_int cl_err;
 
-    GeglOperationAreaFilter *op_area = GEGL_OPERATION_AREA_FILTER (operation);
-	GeglChantO *o = GEGL_CHANT_PROPERTIES (operation);
+  GeglOperationAreaFilter *op_area = GEGL_OPERATION_AREA_FILTER (operation);
+  GeglChantO *o = GEGL_CHANT_PROPERTIES (operation);
 
-	GeglBufferClIterator *i = gegl_buffer_cl_iterator_new (output,   result, out_format, GEGL_CL_BUFFER_WRITE);
-	gint read = gegl_buffer_cl_iterator_add_2 (i, input, result, in_format,  GEGL_CL_BUFFER_READ, op_area->left, op_area->right, op_area->top, op_area->bottom);
-	gint aux  = gegl_buffer_cl_iterator_add_2 (i, NULL, result, in_format,  GEGL_CL_BUFFER_AUX, op_area->left, op_area->right, op_area->top, op_area->bottom);
+  GeglBufferClIterator *i = gegl_buffer_cl_iterator_new (output,   result, out_format, GEGL_CL_BUFFER_WRITE);
+  gint read = gegl_buffer_cl_iterator_add_2 (i, input, result, in_format,  GEGL_CL_BUFFER_READ, op_area->left, op_area->right, op_area->top, op_area->bottom);
+  gint aux  = gegl_buffer_cl_iterator_add_2 (i, NULL, result, in_format,  GEGL_CL_BUFFER_AUX, op_area->left, op_area->right, op_area->top, op_area->bottom);
 
-	while (gegl_buffer_cl_iterator_next (i, &err))
-	{
-		if (err) return FALSE;
-		for (j=0; j < i->n; j++)
+  while (gegl_buffer_cl_iterator_next (i, &err))
+  {
+    if (err) return FALSE;
+    for (j=0; j < i->n; j++)
 
-		{
-			cl_err=cl_noise_reduction(i->tex[read][j],i->tex[aux][j],i->tex[0][j],i->size[0][j],&i->roi[read][j],
-				&i->roi[0][j],o->iterations);
-			if (cl_err != CL_SUCCESS)
-			{
-				g_warning("[OpenCL] Error in %s [GeglOperationFilter:Edge-sobel] Kernel\n");
-				return FALSE;
-			}
-		}
-	}	
-	return TRUE;
+    {
+      cl_err=cl_noise_reduction(i->tex[read][j],i->tex[aux][j],i->tex[0][j],i->size[0][j],&i->roi[read][j],
+        &i->roi[0][j],o->iterations);
+      if (cl_err != CL_SUCCESS)
+      {
+        g_warning("[OpenCL] Error in %s [GeglOperationFilter:Edge-sobel] Kernel\n");
+        return FALSE;
+      }
+    }
+  }  
+  return TRUE;
 }
 
 #define INPLACE 1
@@ -377,8 +376,8 @@ process (GeglOperation       *operation,
   GeglChantO   *o = GEGL_CHANT_PROPERTIES (operation);
 
   if (cl_state.is_accelerated)
-	  if(cl_process(operation, input, output, result))
-		  return TRUE;
+    if(cl_process(operation, input, output, result))
+      return TRUE;
 
   int iteration;
   int stride;
