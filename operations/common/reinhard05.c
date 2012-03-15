@@ -119,42 +119,6 @@ reinhard05_stats_finish (stats *s)
 #include "buffer/gegl-buffer-cl-iterator.h"
 
 static const char* kernel_source =
-<<<<<<< HEAD
-"__kernel void reinhard05_normalize(__global const float * lum,                 \n"
-"								   __global float4 * pix,						\n"
-"								   float chrom,float light,						\n"
-"								   float4 channel_avg,float world_lin_avg,		\n"
-"								   float intensity,float contrast)				\n"
-"{																				\n"
-"	int gid=get_global_id(0);													\n"
-"	float chrom_comp=1.0f-chrom;												\n"
-"	float light_comp=1.0f-light;												\n"
-"	float4 llocal;																\n"
-"	float4 gglobal;																\n"
-"	float4 adapt;																\n"
-"	float4 temp;																\n"
-"	float4 dst=pix[gid];														\n"
-"	if(lum[gid]==0.0f){															\n"
-"		return;																	\n"
-"	}																			\n"
-"	llocal.xyz=chrom*dst.xyz+chrom_comp*lum[gid];								\n"
-"	gglobal.xyz=chrom*channel_avg.xyz+chrom_comp*world_lin_avg;					\n"
-"	adapt.xyz=light*llocal.xyz+light_comp*gglobal.xyz;							\n"
-"	adapt.w=1.0f;																\n"
-"	temp=(float4)pow(intensity*adapt,contrast);									\n"
-"	dst.xyz/=dst.xyz+temp.xyz;													\n"
-"	pix[gid]=dst;																\n"
-"}																				\n"
-"__kernel void reinhard05(__global float4 * src,								\n"
-"						 __global float4 * dst,									\n"
-"						 float min,float range)									\n"
-"{																				\n"
-"	int gid=get_global_id(0);													\n"
-"	float4 temp=src[gid];														\n"
-"	temp=(temp-min)/range;														\n"
-"	dst[gid]=temp;																\n"
-"}																				\n";
-=======
 "__kernel void reinhard05_1 (__global const float4 * pix,        \n"
 "                            __global       float4 * pix_out,    \n"
 "                            __global const float  * lum,        \n"
@@ -191,231 +155,10 @@ static const char* kernel_source =
 " int gid = get_global_id(0);                                    \n"
 " dst[gid] = (src[gid]-min) / range;                             \n"
 "}                                                               \n";
->>>>>>> upstream/gsoc2011-opencl-2
 
 static gegl_cl_run_data * cl_data = NULL;
 
 static cl_int
-<<<<<<< HEAD
-cl_reinhard05 (cl_mem                in_tex,
-			   cl_mem                aux,
-			   cl_mem                out_tex,
-			   size_t                global_worksize,
-			   const GeglRectangle  *roi,
-			   float                 chromatic,
-			   float                 light,
-			   float                 brightness)
-{	
-	cl_int cl_err = 0 , i , c;
-
-	const gint  pix_stride = 4, /* RGBA */
-				RGB        = 3,
-				y_stride   = 4, /* Y float*/
-				pixel_size = roi->width * roi->height;
-
-	stats   world_lin,
-		    world_log,
-		    channel [RGB],
-		    normalise;
-	gfloat  key, contrast, intensity,
-			chrom      =       chromatic,
-			chrom_comp = 1.0 - chromatic,
-			light_comp = 1.0 - light;
-
-	gfloat * lum,
-		   * buf ;
-
-	/* Collect the image stats, averages, etc */
-	reinhard05_stats_start (&world_lin);
-	reinhard05_stats_start (&world_log);
-	reinhard05_stats_start (&normalise);
-	for (i = 0; i < RGB; ++i)
-	{
-		reinhard05_stats_start (channel + i);
-	}
-
-	lum = gegl_clEnqueueMapBuffer(gegl_cl_get_command_queue(),
-		    aux, CL_TRUE, CL_MAP_READ,
-			0, pixel_size * y_stride,
-			NULL, NULL, NULL,
-			&cl_err);
-	if (CL_SUCCESS != cl_err)  return cl_err;
-
-	for (i = 0; i < pixel_size; ++i)
-	{
-		reinhard05_stats_update (&world_lin,                 lum[i] );
-		reinhard05_stats_update (&world_log, logf (2.3e-5f + lum[i]));
-	}
-
-	cl_err = gegl_clEnqueueUnmapMemObject(gegl_cl_get_command_queue(),
-		aux, lum, 
-		NULL, NULL, NULL);
-	if (CL_SUCCESS != cl_err) return cl_err;
-
-	g_return_val_if_fail (world_lin.min >= 0.0, FALSE);
-	reinhard05_stats_finish (&world_lin);
-	reinhard05_stats_finish (&world_log);
-
-	buf = gegl_clEnqueueMapBuffer(gegl_cl_get_command_queue(),
-			in_tex, CL_TRUE, CL_MAP_READ,
-			0, pixel_size * pix_stride * 4,
-			0, NULL, NULL,
-			&cl_err);
-	if (CL_SUCCESS != cl_err)    return  cl_err;
-
-	for (i = 0; i < pixel_size; ++i)
-	{
-		for (c = 0; c < RGB; ++c)
-		{
-			reinhard05_stats_update (channel + c, buf[i * pix_stride + c]);
-		}
-	}
-
-	cl_err = gegl_clEnqueueUnmapMemObject(gegl_cl_get_command_queue(),
-		in_tex, buf, 
-		0, NULL, NULL);
-	if (CL_SUCCESS != cl_err)     return cl_err;
-
-	for (i = 0; i < RGB; ++i)
-	{
-		reinhard05_stats_finish (channel+i);
-	}
-
-	/* Calculate key parameters */
-	key       = (logf (world_lin.max) -                 world_log.avg) /
-		(logf (world_lin.max) - logf (2.3e-5f + world_lin.min));
-	contrast  = 0.3 + 0.7 * powf (key, 1.4);
-	intensity = expf (-brightness);
-
-	g_return_val_if_fail (contrast >= 0.3 && contrast <= 1.0, FALSE);
-
-
-	if (!cl_data)
-	{
-		const char *kernel_name[] ={"reinhard05_normalize","reinhard05", NULL};
-		cl_data = gegl_cl_compile_and_build(kernel_source, kernel_name);
-	}
-	if (!cl_data)  return 0;
-
-	cl_float4 channel_avg={channel[0].avg,channel[1].avg,channel[2].avg,1.0f};
-	cl_float world_lin_avg=world_lin.avg;
-
-	cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 0, sizeof(cl_mem), (void*)&aux);	
-	cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 1, sizeof(cl_mem), (void*)&in_tex);
-	cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 2, sizeof(cl_float), (void*)&chrom);
-	cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 3, sizeof(cl_float), (void*)&light);
-	cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 4, sizeof(cl_float4), (void*)&channel_avg);	
-	cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 5, sizeof(cl_float), (void*)&world_lin_avg);
-	cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 6, sizeof(cl_float), (void*)&intensity);
-	cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 7, sizeof(cl_float), (void*)&contrast);
-
-	if (cl_err != CL_SUCCESS) return cl_err;
-
-	cl_err = gegl_clEnqueueNDRangeKernel(
-		gegl_cl_get_command_queue(), cl_data->kernel[0],
-		1, NULL,
-		&global_worksize, NULL,
-		0, NULL, NULL);
-
-	cl_err = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
-	if (CL_SUCCESS != cl_err) return cl_err;
-
-	//Calculate the  normalise
-
-	buf = gegl_clEnqueueMapBuffer(gegl_cl_get_command_queue(),
-				in_tex, CL_TRUE, CL_MAP_READ,
-				0, pixel_size * pix_stride * 4,
-				0, NULL, NULL,
-				&cl_err);
-	if (CL_SUCCESS != cl_err) return cl_err;
-
-	lum = gegl_clEnqueueMapBuffer(gegl_cl_get_command_queue(),
-			aux, CL_TRUE, CL_MAP_READ,
-			0, pixel_size * y_stride,
-			NULL, NULL, NULL,
-			&cl_err);
-	if (CL_SUCCESS != cl_err) return cl_err;
-
-	for (i = 0; i < pixel_size; ++i){
-		if(lum[i]==0.0)
-			continue;
-		for(c=0;c<RGB;c++)			
-			reinhard05_stats_update (&normalise, buf[i*pix_stride + c]);		
-	}
-
-	cl_err = gegl_clEnqueueUnmapMemObject(gegl_cl_get_command_queue(),
-		aux, lum, 
-		NULL, NULL, NULL);
-	if (CL_SUCCESS != cl_err) return cl_err;
-
-	cl_err = gegl_clEnqueueUnmapMemObject(gegl_cl_get_command_queue(),
-		in_tex, buf, 
-		0, NULL, NULL);
-	if (CL_SUCCESS != cl_err) return cl_err;
-
-	/* Normalise the pixel values */
-	reinhard05_stats_finish (&normalise);
-
-	cl_float normalise_min=normalise.min;
-	cl_float normalise_range=normalise.range;
-
-	cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 0, sizeof(cl_mem), (void*)&in_tex);	
-	cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 1, sizeof(cl_mem), (void*)&out_tex);
-	cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 2, sizeof(cl_float), (void*)&normalise_min);
-	cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 3, sizeof(cl_float), (void*)&normalise_range);
-
-	if (cl_err != CL_SUCCESS) return cl_err;
-
-	cl_err = gegl_clEnqueueNDRangeKernel(
-		gegl_cl_get_command_queue(), cl_data->kernel[1],
-		1, NULL,
-		&global_worksize, NULL,
-		0, NULL, NULL);
-
-	cl_err = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
-	if (CL_SUCCESS != cl_err) return cl_err;
-
-	return cl_err;
-}
-
-
-static gboolean
-cl_process (GeglOperation       *operation,
-			GeglBuffer          *input,
-			GeglBuffer          *output,
-			const GeglRectangle *result)
-{
-	const Babl *in_format  = gegl_operation_get_format (operation, "input");
-	const Babl *out_format = gegl_operation_get_format (operation, "output");
-	const Babl *aux_format = babl_format("Y float");
-	gint err;
-	gint j;
-	cl_int cl_err;
-
-	GeglChantO *o = GEGL_CHANT_PROPERTIES (operation);
-
-	GeglBufferClIterator *i = gegl_buffer_cl_iterator_new (output,result, out_format, GEGL_CL_BUFFER_WRITE);
-	gint read = gegl_buffer_cl_iterator_add (i, input, result, in_format,  GEGL_CL_BUFFER_READ);
-	gint aux  = gegl_buffer_cl_iterator_add (i, input, result, aux_format, GEGL_CL_BUFFER_READ);
-
-	while (gegl_buffer_cl_iterator_next (i, &err))
-	{
-		if (err) return FALSE;
-		for (j=0; j < i->n; j++)
-
-		{
-			cl_err=cl_reinhard05(i->tex[read][j],i->tex[aux][j],i->tex[0][j],i->size[0][j],&i->roi[0][j],
-				o->chromatic, o->light, o->brightness);
-			if (cl_err != CL_SUCCESS)
-			{
-				g_warning("[OpenCL] Error in %s [GeglOperationFilter:Edge-sobel] Kernel\n");
-				return FALSE;
-			}
-		}
-	}	
-	return TRUE;
-}
-=======
 cl_reinhard05_1 (cl_mem               in_tex,
                  cl_mem               lum_tex,
                  cl_mem               out_tex,
@@ -498,7 +241,6 @@ cl_reinhard05_2 (cl_mem               in_tex,
 }
 
 
->>>>>>> upstream/gsoc2011-opencl-2
 
 static gboolean
 reinhard05_process (GeglOperation       *operation,
@@ -507,10 +249,6 @@ reinhard05_process (GeglOperation       *operation,
                     const GeglRectangle *result)
 {
   const GeglChantO *o = GEGL_CHANT_PROPERTIES (operation);
-
-  if (cl_state.is_accelerated)
-	  if(cl_process(operation, input, output, result))
-		  return TRUE;
 
   const gint  pix_stride = 4, /* RGBA */
               RGB        = 3;

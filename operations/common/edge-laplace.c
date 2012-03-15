@@ -398,11 +398,7 @@ static gegl_cl_run_data *cl_data = NULL;
 static cl_int
 cl_edge_laplace (cl_mem                in_tex,
                  cl_mem                aux_tex,
-<<<<<<< HEAD
-				 cl_mem                out_tex,
-=======
                  cl_mem                out_tex,
->>>>>>> upstream/gsoc2011-opencl-2
                  const GeglRectangle  *src_rect,
                  const GeglRectangle  *roi,
                  gint                  radius)
@@ -419,10 +415,7 @@ cl_edge_laplace (cl_mem                in_tex,
 
   global_ws[0] = roi->width;
   global_ws[1] = roi->height;
-<<<<<<< HEAD
-=======
 
->>>>>>> upstream/gsoc2011-opencl-2
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 0, sizeof(cl_mem),   (void*)&in_tex);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 1, sizeof(cl_mem),   (void*)&aux_tex);
   if (cl_err != CL_SUCCESS) return cl_err;
@@ -433,12 +426,9 @@ cl_edge_laplace (cl_mem                in_tex,
                                        0, NULL, NULL);
   if (cl_err != CL_SUCCESS) return cl_err;
 
-<<<<<<< HEAD
-=======
   cl_err = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
   if (CL_SUCCESS != cl_err) return cl_err;
 
->>>>>>> upstream/gsoc2011-opencl-2
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 0, sizeof(cl_mem),   (void*)&aux_tex);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 1, sizeof(cl_mem),   (void*)&out_tex);
   if (cl_err != CL_SUCCESS) return cl_err;
@@ -477,11 +467,7 @@ cl_process (GeglOperation       *operation,
       cl_err = cl_edge_laplace(i->tex[read][j], i->tex[aux][j], i->tex[0][j], &i->roi[read][j], &i->roi[0][j], LAPLACE_RADIUS);
       if (cl_err != CL_SUCCESS)
       {
-<<<<<<< HEAD
-        g_warning("[OpenCL] Error in edge-laplace: %s\n", gegl_cl_errstring(cl_err));
-=======
         g_warning("[OpenCL] Error in gegl:edge-laplace: %s\n", gegl_cl_errstring(cl_err));
->>>>>>> upstream/gsoc2011-opencl-2
         return FALSE;
       }
     }

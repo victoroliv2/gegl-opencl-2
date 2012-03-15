@@ -46,13 +46,8 @@ static void prepare (GeglOperation *operation)
 
 static const char* kernel_source =
 "__kernel void Mono_mixer_cl(__global const float4 *src_buf,              \n"
-<<<<<<< HEAD
-"              float4                 color,    /* red green bule 1 */    \n"
-"              __global float2       *dst_buf)                            \n"
-=======
 "                            float4                 color,                \n"
 "                            __global float2       *dst_buf)              \n"
->>>>>>> upstream/gsoc2011-opencl-2
 "{                                                                        \n"
 "  int gid = get_global_id(0);                                            \n"
 "  float4 tmp = src_buf[gid] * color;                                     \n"
@@ -80,11 +75,7 @@ cl_mono_mixer(cl_mem                in_tex,
   }
   if (!cl_data) return 0;
 
-<<<<<<< HEAD
-  cl_float4  color={red,green,blue,1.0};
-=======
   cl_float4 color = {red, green, blue, 1.0};
->>>>>>> upstream/gsoc2011-opencl-2
 
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 0, sizeof(cl_mem), (void*)&in_tex);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 1, sizeof(cl_float4), (void*)&color);
@@ -95,11 +86,6 @@ cl_mono_mixer(cl_mem                in_tex,
                                        1, NULL,
                                        &global_worksize, NULL,
                                        0, NULL, NULL);
-<<<<<<< HEAD
-  cl_err = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
-  if (CL_SUCCESS != cl_err) return cl_err;
-=======
->>>>>>> upstream/gsoc2011-opencl-2
 
   return cl_err;
 
@@ -126,21 +112,11 @@ cl_process (GeglOperation       *operation,
     if (err) return FALSE;
     for (j=0; j < i->n; j++)
     {
-<<<<<<< HEAD
-      cl_err = cl_mono_mixer(i->tex[read][j], i->tex[0][j], i->size[0][j],
-        &i->roi[0][j], o->red ,o->green , o->blue);
-
-      if (cl_err != CL_SUCCESS)
-      {
-        g_warning("[OpenCL] Error in %s [GeglOperationFilter] Kernel\n",
-          GEGL_OPERATION_CLASS (operation)->name);
-=======
       cl_err = cl_mono_mixer(i->tex[read][j], i->tex[0][j], i->size[0][j], &i->roi[0][j], o->red ,o->green , o->blue);
 
       if (cl_err != CL_SUCCESS)
       {
         g_warning("[OpenCL] Error %s in gegl:mono-mixer", gegl_cl_errstring(cl_err));
->>>>>>> upstream/gsoc2011-opencl-2
         return FALSE;
       }
     }
