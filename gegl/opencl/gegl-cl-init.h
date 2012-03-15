@@ -36,6 +36,7 @@ const char *gegl_cl_errstring(cl_int err);
 gboolean gegl_cl_init (GError **error);
 
 gboolean gegl_cl_is_accelerated (void);
+gboolean gegl_cl_is_opencl_available(void);
 
 cl_platform_id gegl_cl_get_platform (void);
 
