@@ -749,13 +749,14 @@ gegl_processor_work (GeglProcessor *processor,
   gegl_visitor_dfs_traverse (visitor, GEGL_VISITABLE (processor->node));
   visits_list = gegl_visitor_get_visits_list (visitor);
 
-  if (gegl_config()->use_opencl && cl_state.is_accelerated)
+  if (gegl_config()->use_opencl && gegl_cl_is_opencl_available())
     for (iterator = visits_list; iterator; iterator = iterator->next)
       {
         GeglNode *node = (GeglNode*) iterator->data;
         if (GEGL_OPERATION_GET_CLASS(node->operation)->opencl_support)
           {
-            processor->chunk_size = INT_MAX;
+            processor->chunk_size =
+                GEGL_OPERATION_GET_CLASS(node->operation)->cl_chunk_size;
           }
       }
 

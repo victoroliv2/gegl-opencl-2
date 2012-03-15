@@ -2,7 +2,7 @@
 #define __GEGL_CL_COLOR_H__
 
 #include <gegl.h>
-#include "gegl-cl-types.h"
+#include "gegl-cl.h"
 
 typedef enum
 {

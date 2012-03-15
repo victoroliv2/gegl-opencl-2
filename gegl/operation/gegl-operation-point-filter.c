@@ -62,6 +62,7 @@ gegl_operation_point_filter_class_init (GeglOperationPointFilterClass *klass)
   operation_class->process = gegl_operation_point_filter_op_process;
   operation_class->prepare = prepare;
   operation_class->no_cache = TRUE;
+  operation_class->cl_chunk_size = 2048*2048;
 
   klass->process = NULL;
   klass->cl_process = NULL;
