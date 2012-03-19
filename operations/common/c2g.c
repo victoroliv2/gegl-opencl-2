@@ -340,7 +340,7 @@ cl_c2g (cl_mem                in_tex,
   compute_luts(rgamma);
   cl_mem cl_lut_cos, cl_lut_sin, cl_radiuses;
   cl_lut_cos = gegl_clCreateBuffer(gegl_cl_get_context(),
-                                   CL_MEM_ALLOC_HOST_PTR|CL_MEM_READ_ONLY,
+                                   CL_MEM_READ_ONLY,
                                    ANGLE_PRIME * sizeof(cl_float), NULL, &cl_err);
 
   cl_err |= gegl_clEnqueueWriteBuffer(gegl_cl_get_command_queue(), cl_lut_cos,
@@ -348,7 +348,7 @@ cl_c2g (cl_mem                in_tex,
   if (CL_SUCCESS != cl_err)   return cl_err;
 
   cl_lut_sin = gegl_clCreateBuffer(gegl_cl_get_context(),
-                                   CL_MEM_ALLOC_HOST_PTR|CL_MEM_READ_ONLY,
+                                   CL_MEM_READ_ONLY,
                                    ANGLE_PRIME * sizeof(cl_float), NULL, &cl_err);
 
   cl_err |= gegl_clEnqueueWriteBuffer(gegl_cl_get_command_queue(), cl_lut_sin,
@@ -356,7 +356,7 @@ cl_c2g (cl_mem                in_tex,
   if (CL_SUCCESS != cl_err)    return cl_err;
 
   cl_radiuses = gegl_clCreateBuffer(gegl_cl_get_context(),
-                                    CL_MEM_ALLOC_HOST_PTR|CL_MEM_READ_ONLY,
+                                    CL_MEM_READ_ONLY,
                                     RADIUS_PRIME * sizeof(cl_float), NULL, &cl_err);
 
   cl_err |= gegl_clEnqueueWriteBuffer(gegl_cl_get_command_queue(), cl_radiuses,
@@ -388,6 +388,8 @@ cl_c2g (cl_mem                in_tex,
 
   cl_err = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
   if (CL_SUCCESS != cl_err)    return cl_err;
+
+  gegl_clFinish(gegl_cl_get_command_queue ());
 
   gegl_clReleaseMemObject(cl_radiuses);
   gegl_clReleaseMemObject(cl_lut_cos);
