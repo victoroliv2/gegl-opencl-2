@@ -210,7 +210,7 @@ static const char* kernel_source =
 "            float4 metric_new = GEN_METRIC (before_pix,                           \n"
 "                                            value,                                \n"
 "                                            after_pix);                           \n"
-"            mask = BAIL_CONDITION (metric_new, metric_reference[axis]) && mask;   \n"
+"            mask = BAIL_CONDITION (metric_new, metric_reference[axis]) & mask;    \n"
 "          }                                                                       \n"
 "        sum   += mask >0 ? value : 0;                                             \n"
 "        count += mask >0 ? 1     : 0;                                             \n"
@@ -280,7 +280,7 @@ cl_noise_reduction (cl_mem                in_tex,
         aux_tex     = temp_tex;
         temp_tex    = temp;
       }
-
+      gbl_size_tmp[0] = roi->width  + 2 * (iterations - 1 -i);
       gbl_size_tmp[1] = roi->height + 2 * (iterations - 1 -i);
 
       cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 0, sizeof(cl_mem), (void*)&temp_tex);
