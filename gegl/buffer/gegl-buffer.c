@@ -53,6 +53,7 @@
 #include "gegl-tile-storage.h"
 #include "gegl-tile-backend.h"
 #include "gegl-tile-backend-file.h"
+#include "gegl-tile-backend-tiledir.h"
 #include "gegl-tile-backend-ram.h"
 #include "gegl-tile.h"
 #include "gegl-tile-handler-cache.h"
@@ -363,8 +364,6 @@ gint gegl_buffer_leaks (void)
   return allocated_buffers - de_allocated_buffers;
 }
 
-static void gegl_buffer_void (GeglBuffer *buffer);
-
 static void
 gegl_buffer_dispose (GObject *object)
 {
@@ -379,7 +378,16 @@ gegl_buffer_dispose (GObject *object)
   if (handler->source &&
       GEGL_IS_TILE_STORAGE (handler->source))
     {
-      gegl_buffer_void (buffer);
+      GeglTileBackend *backend = gegl_buffer_backend (buffer);
+
+      /* only flush non-internal backends,. */
+      if (!(GEGL_IS_TILE_BACKEND_FILE (backend) ||
+            GEGL_IS_TILE_BACKEND_RAM (backend) ||
+            GEGL_IS_TILE_BACKEND_TILE_DIR (backend)))
+        gegl_buffer_flush (buffer);
+
+      gegl_tile_source_reinit (GEGL_TILE_SOURCE (handler->source));
+
 #if 0
       g_object_unref (handler->source);
       handler->source = NULL; /* this might be a dangerous way of marking that we have already voided */
@@ -489,8 +497,7 @@ gegl_buffer_constructor (GType                  type,
       else if (GEGL_IS_BUFFER (source))
         buffer->format = GEGL_BUFFER (source)->format;
     }
-
-  if (!source)
+  else
     {
       /* if no source is specified if a format is specified, we
        * we need to create our own
@@ -498,12 +505,14 @@ gegl_buffer_constructor (GType                  type,
        * all "allocated from format", type buffers.
        */
       if (buffer->backend)
-      {
+        {
           void             *storage;
 
           storage = gegl_tile_storage_new (buffer->backend);
 
           source = g_object_new (GEGL_TYPE_BUFFER, "source", storage, NULL);
+
+          g_object_unref (storage);
 
           gegl_tile_handler_set_source ((GeglTileHandler*)(buffer), source);
           g_object_unref (source);
@@ -514,8 +523,8 @@ gegl_buffer_constructor (GType                  type,
           g_assert (source);
           backend = gegl_buffer_backend (GEGL_BUFFER (source));
           g_assert (backend);
-	  g_assert (backend == buffer->backend);
-	}
+	        g_assert (backend == buffer->backend);
+	      }
       else if (buffer->path && g_str_equal (buffer->path, "RAM"))
         {
           source = GEGL_TILE_SOURCE (gegl_buffer_new_from_format (buffer->format,
@@ -540,12 +549,12 @@ gegl_buffer_constructor (GType                  type,
           GeglBufferHeader *header;
           void             *storage;
 
-	   backend = g_object_new (GEGL_TYPE_TILE_BACKEND_FILE,
-                                   "tile-width", 128,
-                                   "tile-height", 64,
-                                   "format", buffer->format?buffer->format:babl_format ("RGBA float"),
-                                   "path", buffer->path,
-                                   NULL);
+          backend = g_object_new (GEGL_TYPE_TILE_BACKEND_FILE,
+                                  "tile-width", 128,
+                                  "tile-height", 64,
+                                  "format", buffer->format?buffer->format:babl_format ("RGBA float"),
+                                  "path", buffer->path,
+                                  NULL);
           storage = gegl_tile_storage_new (backend);
 
           source = g_object_new (GEGL_TYPE_BUFFER, "source", storage, NULL);
@@ -592,19 +601,17 @@ gegl_buffer_constructor (GType                  type,
         {
           g_warning ("not enough data to have a tile source for our buffer");
         }
-      {
         /* we reset the size if it seems to have been set to 0 during a on
          * disk buffer creation, nasty but it seems to do the job.
          */
 
-        if (buffer->extent.width == 0)
-          {
-            buffer->extent.width = width;
-            buffer->extent.height = height;
-            buffer->extent.x = x;
-            buffer->extent.y = y;
-          }
-      }
+      if (buffer->extent.width == 0)
+        {
+          buffer->extent.width = width;
+          buffer->extent.height = height;
+          buffer->extent.x = x;
+          buffer->extent.y = y;
+        }
     }
 
   g_assert (backend);
@@ -746,6 +753,7 @@ gegl_buffer_get_tile (GeglTileSource *source,
             gegl_tile_lock (tile);
             tile->tile_storage = buffer->tile_storage;
             gegl_tile_unlock (tile);
+            tile->rev--;
           }
         tile->x = x;
         tile->y = y;
@@ -1258,63 +1266,6 @@ static const void *gegl_buffer_internal_get_format (GeglBuffer *buffer)
     return buffer->format;
   return gegl_tile_backend_get_format (gegl_buffer_backend (buffer));
 }
-
-static void
-gegl_buffer_void (GeglBuffer *buffer)
-{
-  gint width       = buffer->extent.width;
-  gint height      = buffer->extent.height;
-  gint tile_width  = buffer->tile_storage->tile_width;
-  gint tile_height = buffer->tile_storage->tile_height;
-  gint bufy        = 0;
-
-  g_mutex_lock (buffer->tile_storage->mutex);
-  {
-    gint z;
-    gint factor = 1;
-    for (z = 0; z <= buffer->max_z; z++)
-      {
-        bufy = 0;
-        while (bufy < height)
-          {
-            gint tiledy  = buffer->extent.y + buffer->shift_y + bufy;
-            gint offsety = gegl_tile_offset (tiledy, tile_height);
-            gint bufx    = 0;
-            gint ty = gegl_tile_indice (tiledy / factor, tile_height);
-
-            if (z != 0 ||  /* FIXME: handle z==0 correctly */
-                ty >= buffer->min_y)
-              while (bufx < width)
-                {
-                  gint tiledx  = buffer->extent.x + buffer->shift_x + bufx;
-                  gint offsetx = gegl_tile_offset (tiledx, tile_width);
-
-                  gint tx = gegl_tile_indice (tiledx / factor, tile_width);
-
-                  if (z != 0 ||
-                      tx >= buffer->min_x)
-                  gegl_tile_source_command (GEGL_TILE_SOURCE (buffer),
-                                         GEGL_TILE_VOID, tx, ty, z, NULL);
-
-                  if (z != 0 ||
-                      tx > buffer->max_x)
-                    goto done_with_row;
-
-                  bufx += (tile_width - offsetx) * factor;
-                }
-done_with_row:
-            bufy += (tile_height - offsety) * factor;
-
-                  if (z != 0 ||
-                      ty > buffer->max_y)
-                    break;
-          }
-        factor *= 2;
-      }
-  }
-  g_mutex_unlock (buffer->tile_storage->mutex);
-}
-
 
 const Babl    *gegl_buffer_get_format        (GeglBuffer           *buffer)
 {

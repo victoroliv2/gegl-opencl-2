@@ -96,130 +96,6 @@ get_required_for_output (GeglOperation        *operation,
   return result;
 }
 
-#include "opencl/gegl-cl.h"
-#include "buffer/gegl-buffer-cl-iterator.h"
-
-static const char* kernel_source =
-"__kernel void kernel_StretchContrast(__global float4 * in,     \n"
-"                                     __global float4 * out,    \n"
-"									  float           min,      \n"
-"							          float           max)      \n"     
-"{																\n"
-"	int gid = get_global_id(0);									\n"
-"   float4 in_v = in[gid];										\n"
-"	out[gid] = ( in_v - min ) / ( max - min );		            \n"
-"}																\n";
-
-static gegl_cl_run_data * cl_data = NULL;
-
-static cl_int
-cl_stretch_contrast (cl_mem                in_tex,
-					 cl_mem                out_tex,
-					 size_t                global_worksize,
-					 const GeglRectangle  *roi)
-{	
-	int i = 0 , stride = 16;/*RGBA float*/
-	size_t size = roi->width * roi->height * stride;
-	cl_int cl_err = 0;
-	gfloat * buf;
-	gdouble  min,max;
-
-	//get the value of min and max after the data is converted into needed format.
-	buf = gegl_clEnqueueMapBuffer(gegl_cl_get_command_queue(),
-			in_tex, CL_TRUE, CL_MAP_READ,
-			0, size,
-			0, NULL, NULL,
-			&cl_err);
-	if (CL_SUCCESS != cl_err)  return cl_err;
-
-	{
-		gfloat fmin= 9000000.0;
-		gfloat fmax=-9000000.0;
-
-		for(i=0; i<roi->width * roi->height;i++)
-		{
-			gint component;
-			for (component=0; component<3; component++)
-			{
-				gfloat val = buf[i*4+component];
-				if (val<fmin)
-					fmin=val;
-				if (val>fmax)
-					fmax=val;
-			}
-		}		
-		min=fmin;
-		max=fmax;
-	}
-	cl_err = gegl_clEnqueueUnmapMemObject(gegl_cl_get_command_queue(),
-		in_tex, buf, 
-		0, NULL, NULL);
-	if (CL_SUCCESS != cl_err)  return cl_err;
-
-    
-
-	if (!cl_data)
-	{
-		const char *kernel_name[] ={"kernel_StretchContrast", NULL};
-		cl_data = gegl_cl_compile_and_build(kernel_source, kernel_name);
-	}
-	if (!cl_data)  return 0;
-
-	cl_float cl_min = (cl_float)min;
-	cl_float cl_max = (cl_float)max;
-
-	cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 0, sizeof(cl_mem), (void*)&in_tex);	
-	cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 1, sizeof(cl_mem), (void*)&out_tex);
-	cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 2, sizeof(cl_float), (void*)&cl_min);
-	cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 3, sizeof(cl_float), (void*)&cl_max);
-	if (cl_err != CL_SUCCESS) return cl_err;
-
-	cl_err = gegl_clEnqueueNDRangeKernel(
-		gegl_cl_get_command_queue(), cl_data->kernel[0],
-		1, NULL,
-		&global_worksize, NULL,
-		0, NULL, NULL);
-
-	cl_err = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
-	if (CL_SUCCESS != cl_err) return cl_err;
-
-	return cl_err;
-}
-
-
-static gboolean
-cl_process (GeglOperation       *operation,
-			GeglBuffer          *input,
-			GeglBuffer          *output,
-			const GeglRectangle *result)
-{
-	const Babl *in_format  = gegl_operation_get_format (operation, "input");
-	const Babl *out_format = gegl_operation_get_format (operation, "output");
-	gint err;
-	gint j;
-	cl_int cl_err;
-
-	GeglBufferClIterator *i = gegl_buffer_cl_iterator_new (output,result, out_format, GEGL_CL_BUFFER_WRITE);
-	gint read = gegl_buffer_cl_iterator_add (i, input, result, in_format,  GEGL_CL_BUFFER_READ);
-
-	while (gegl_buffer_cl_iterator_next (i, &err))
-	{
-		if (err) return FALSE;
-		for (j=0; j < i->n; j++)
-
-		{
-			cl_err=cl_stretch_contrast(i->tex[read][j],i->tex[0][j],i->size[0][j],&i->roi[0][j]);
-			if (cl_err != CL_SUCCESS)
-			{
-				g_warning("[OpenCL] Error in %s [GeglOperationFilter:Edge-sobel] Kernel\n");
-				return FALSE;
-			}
-		}
-	}	
-	return TRUE;
-}
-
-
 static gboolean
 process (GeglOperation       *operation,
          GeglBuffer          *input,
@@ -227,10 +103,6 @@ process (GeglOperation       *operation,
          const GeglRectangle *result)
 {
   gdouble  min, max;
-
-  if (cl_state.is_accelerated)
-	  if(cl_process(operation, input, output, result))
-		  return TRUE;
 
   buffer_get_min_max (input, &min, &max);
   {
@@ -279,7 +151,6 @@ gegl_chant_class_init (GeglChantClass *klass)
 
   filter_class->process = process;
   operation_class->prepare = prepare;
-  operation_class->opencl_support = TRUE;
   operation_class->get_required_for_output = get_required_for_output;
 
   operation_class->name        = "gegl:stretch-contrast";

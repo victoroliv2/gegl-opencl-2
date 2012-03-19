@@ -609,7 +609,7 @@ gegl_node_connect_from (GeglNode    *sink,
       real_source = gegl_node_get_output_proxy (source, source_pad_name);
 
       /* The name of the output pad of proxynop output nodes is always
-       * "ouput"
+       * "output"
        */
       real_source_pad_name = "output";
     }
@@ -690,6 +690,8 @@ gegl_node_disconnect (GeglNode    *sink,
       source_pad = gegl_connection_get_source_pad (connection);
       source     = gegl_connection_get_source_node (connection);
 
+      gegl_node_source_invalidated (source, &source->have_rect, sink_pad);
+
       {
         /* disconnecting dirt propagation */
         gulong handler;
@@ -709,6 +711,7 @@ gegl_node_disconnect (GeglNode    *sink,
       source->priv->sink_connections = g_slist_remove (source->priv->sink_connections, connection);
 
       gegl_connection_destroy (connection);
+
 
       return TRUE;
     }
@@ -1974,14 +1977,24 @@ gegl_node_get_consumers (GeglNode      *node,
   return n_connections;
 }
 
+
+void
+gegl_node_emit_computed (GeglNode *node,
+                         const GeglRectangle *rect)
+{
+  static GStaticMutex mutex = G_STATIC_MUTEX_INIT;
+  g_static_mutex_lock (&mutex);
+  g_signal_emit (node, gegl_node_signals[COMPUTED], 0, rect, NULL, NULL);
+  g_static_mutex_unlock (&mutex);
+}
+
 static void
 gegl_node_computed_event (GeglCache *self,
                           void      *foo,
                           void      *user_data)
 {
   GeglNode *node = GEGL_NODE (user_data);
-
-  g_signal_emit (node, gegl_node_signals[COMPUTED], 0, foo, NULL, NULL);
+  gegl_node_emit_computed (node, foo);
 }
 
 GeglCache *

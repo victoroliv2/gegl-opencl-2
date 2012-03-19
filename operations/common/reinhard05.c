@@ -126,24 +126,23 @@ static const char* kernel_source =
 "                            float light,                        \n"
 "                            float intensity,                    \n"
 "                            float contrast,                     \n"
-"                            float3 channel_avg,                 \n"
+"                            float4 channel_avg,                 \n"
 "                            float world_lin_avg)                \n"
 "{                                                               \n"
 " int gid = get_global_id(0);                                    \n"
 " float4 pix_v = pix[gid];                                       \n"
 " float  lum_v = lum[gid];                                       \n"
-"                                                                \n"
 " float3 local_;                                                 \n"
 " float3 global_;                                                \n"
-" float4 adapt;                                                  \n"
+" float3 adapt;                                                  \n"
 "                                                                \n"
 " if (lum_v == 0.0f) return;                                     \n"
 "                                                                \n"
-" local_  = chrom * pix_v.xyz   + (1.0f - chrom) * lum_v;        \n"
-" global_ = chrom * channel_avg + (1.0f - chrom) * world_lin_avg;\n"
-" adapt.xyz = light * local_    + (1.0f - light) * global_;      \n"
-" adapt.w = 1.0f;                                                \n"
-" pix_v /= pix_v + pow (intensity * adapt, contrast);            \n"
+" local_  = chrom * pix_v.xyz       + (1.0f - chrom) * lum_v;         \n"
+" global_ = chrom * channel_avg.xyz + (1.0f - chrom) * world_lin_avg; \n"
+" adapt   = light * local_ + (1.0f - light) * global_;                \n"
+" pix_v.xyz /= pix_v.xyz + pow (intensity * adapt, contrast);    \n"
+"                                                                \n"
 " pix_out[gid] = pix_v;                                          \n"
 "}                                                               \n"
 "                                                                \n"
@@ -164,17 +163,15 @@ cl_reinhard05_1 (cl_mem               in_tex,
                  cl_mem               out_tex,
                  size_t               global_worksize,
                  const GeglRectangle *roi,
-
                  gfloat               chrom,
                  gfloat               light,
                  gfloat               intensity,
                  gfloat               contrast,
-
                  stats                world_lin,
                  stats                channel[])
 {
   cl_int cl_err = 0;
-  cl_float3 channel_avg = {channel[0].avg, channel[1].avg, channel[2].avg};
+  cl_float4 channel_avg = {channel[0].avg, channel[1].avg, channel[2].avg, 1.0f};
 
   if (!cl_data)
     {
@@ -193,7 +190,7 @@ cl_reinhard05_1 (cl_mem               in_tex,
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 5, sizeof(cl_float),  (void*)&intensity);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 6, sizeof(cl_float),  (void*)&contrast);
 
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 7, sizeof(cl_float3), (void*)&channel_avg);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 7, sizeof(cl_float4), (void*)&channel_avg);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 8, sizeof(cl_float),  (void*)&world_lin.avg);
   if (cl_err != CL_SUCCESS) return cl_err;
 
@@ -202,7 +199,6 @@ cl_reinhard05_1 (cl_mem               in_tex,
                                         NULL, &global_worksize, NULL,
                                         0, NULL, NULL);
   if (cl_err != CL_SUCCESS) return cl_err;
-
   return cl_err;
 }
 
@@ -211,7 +207,6 @@ cl_reinhard05_2 (cl_mem               in_tex,
                  cl_mem               out_tex,
                  size_t               global_worksize,
                  const GeglRectangle *roi,
-
                  gfloat               min,
                  gfloat               range)
 {
@@ -225,10 +220,10 @@ cl_reinhard05_2 (cl_mem               in_tex,
 
   if (!cl_data) return 1;
 
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 0, sizeof(cl_mem),    (void*)&in_tex);
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 1, sizeof(cl_mem),    (void*)&out_tex);
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 2, sizeof(cl_float),  (void*)&min);
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 3, sizeof(cl_float),  (void*)&range);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 0, sizeof(cl_mem),    (void*)&in_tex);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 1, sizeof(cl_mem),    (void*)&out_tex);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 2, sizeof(cl_float),  (void*)&min);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 3, sizeof(cl_float),  (void*)&range);
   if (cl_err != CL_SUCCESS) return cl_err;
 
   cl_err = gegl_clEnqueueNDRangeKernel(gegl_cl_get_command_queue (),
@@ -236,7 +231,6 @@ cl_reinhard05_2 (cl_mem               in_tex,
                                         NULL, &global_worksize, NULL,
                                         0, NULL, NULL);
   if (cl_err != CL_SUCCESS) return cl_err;
-
   return cl_err;
 }
 
@@ -349,6 +343,7 @@ reinhard05_process (GeglOperation       *operation,
           if (err) return FALSE;
           for (j=0; j < i->n; j++)
             {
+
               cl_err = cl_reinhard05_1(i->tex[read][j], i->tex[lum_][j], i->tex[0][j], i->size[0][j], &i->roi[0][j],
                                        chrom, light, intensity, contrast,
                                        world_lin, channel);
@@ -357,45 +352,47 @@ reinhard05_process (GeglOperation       *operation,
                   g_warning("[OpenCL] Error in gegl:reinhard05: %s\n", gegl_cl_errstring(cl_err));
                   return FALSE;
                 }
+
+              pix_map = gegl_clEnqueueMapBuffer(gegl_cl_get_command_queue(), i->tex[0][j], CL_TRUE, CL_MAP_READ, 0, i->size[0][j] * babl_format_get_bytes_per_pixel (in_format),
+                                                0, NULL, NULL, &cl_err);
+              if (CL_SUCCESS != cl_err) return cl_err;
+
+              for (k = 0; k < i->size[0][j]; ++k)
+                {
+                  if(lum[k] == 0.0f)
+                    continue;
+                  for(c=0; c < RGB; c++)
+                    reinhard05_stats_update (&normalise, pix_map[k*pix_stride + c]);
+                }
+
+              cl_err = gegl_clEnqueueUnmapMemObject(gegl_cl_get_command_queue(), i->tex[0][j], pix_map,
+                                                    0, NULL, NULL);
+              if (CL_SUCCESS != cl_err) return cl_err;
+
             }
-
-          pix_map = gegl_clEnqueueMapBuffer(gegl_cl_get_command_queue(), i->tex[0][j], CL_TRUE, CL_MAP_READ, 0, i->size[0][j] * babl_format_get_bytes_per_pixel (in_format),
-                                            0, NULL, NULL, &cl_err);
-          if (CL_SUCCESS != cl_err) return cl_err;
-
-          for (k = 0; k < i->size[0][j]; ++k)
-            {
-              if(lum[k] == 0.0f)
-                continue;
-              for(c=0; c < RGB; c++)
-                reinhard05_stats_update (&normalise, pix_map[k*pix_stride + c]);
-            }
-
-          cl_err = gegl_clEnqueueUnmapMemObject(gegl_cl_get_command_queue(), i->tex[0][j], pix_map,
-                                                0, NULL, NULL);
-          if (CL_SUCCESS != cl_err) return cl_err;
         }
       }
 
       /* Normalise the pixel values */
       reinhard05_stats_finish (&normalise);
-
       {
       GeglBufferClIterator *i = gegl_buffer_cl_iterator_new (output, result, out_format, GEGL_CL_BUFFER_WRITE);
       gint read = gegl_buffer_cl_iterator_add (i, pix_out, result, in_format,  GEGL_CL_BUFFER_READ);
-
       while (gegl_buffer_cl_iterator_next (i, &err))
         {
           if (err) return FALSE;
           for (j=0; j < i->n; j++)
             {
+
               cl_err = cl_reinhard05_2(i->tex[read][j], i->tex[0][j], i->size[0][j], &i->roi[0][j],
                                        normalise.min, normalise.range);
               if (cl_err != CL_SUCCESS)
                 {
                   g_warning("[OpenCL] Error in gegl:reinhard05: %s\n", gegl_cl_errstring(cl_err));
                   return FALSE;
+
                 }
+
             }
         }
       }
@@ -404,6 +401,7 @@ reinhard05_process (GeglOperation       *operation,
     }
   else
     {
+
       /* Apply the operator */
       for (i = 0; i < result->width * result->height; ++i)
         {
@@ -454,8 +452,7 @@ reinhard05_process (GeglOperation       *operation,
 }
 
 
-/*
- */
+/**/
 static void
 gegl_chant_class_init (GeglChantClass *klass)
 {
@@ -482,4 +479,5 @@ gegl_chant_class_init (GeglChantClass *klass)
 }
 
 #endif
+
 

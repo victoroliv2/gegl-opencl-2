@@ -149,18 +149,18 @@ cl_motion_blur (cl_mem                in_tex,
 {
   cl_int cl_err = 0;
   size_t global_ws[2];
-  
+
   if (!cl_data)
   {
     const char *kernel_name[] = {"motion_blur_CL", NULL};
     cl_data = gegl_cl_compile_and_build (kernel_source, kernel_name);
   }
-  
+
   if (!cl_data) return 1;
-  
+
   global_ws[0] = roi->width;
   global_ws[1] = roi->height;
-  
+
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0],  0, sizeof(cl_mem),   (void*)&in_tex);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0],  1, sizeof(cl_int),   (void*)&src_rect->width);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0],  2, sizeof(cl_int),   (void*)&src_rect->height);
@@ -173,13 +173,13 @@ cl_motion_blur (cl_mem                in_tex,
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0],  9, sizeof(cl_float), (void*)&offset_x);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 10, sizeof(cl_float), (void*)&offset_y);
   if (cl_err != CL_SUCCESS) return cl_err;
-  
+
   cl_err = gegl_clEnqueueNDRangeKernel(gegl_cl_get_command_queue (),
-      cl_data->kernel[0], 2,
-      NULL, global_ws, NULL,
-      0, NULL, NULL);
+                                       cl_data->kernel[0], 2,
+                                       NULL, global_ws, NULL,
+                                       0, NULL, NULL);
   if (cl_err != CL_SUCCESS) return cl_err;
-  
+
   return cl_err;
 }
 
@@ -205,7 +205,8 @@ cl_process (GeglOperation       *operation,
   gint num_steps = (gint)ceil(o->length) + 1;
 
   GeglBufferClIterator *i = gegl_buffer_cl_iterator_new (output,   result, out_format, GEGL_CL_BUFFER_WRITE);
-                gint read = gegl_buffer_cl_iterator_add_2 (i, input, result, in_format,  GEGL_CL_BUFFER_READ, op_area->left, op_area->right, op_area->top, op_area->bottom);
+                gint read = gegl_buffer_cl_iterator_add_2 (i, input, result, in_format,  GEGL_CL_BUFFER_READ,
+                                                           op_area->left, op_area->right, op_area->top, op_area->bottom);
   while (gegl_buffer_cl_iterator_next (i, &err))
   {
     if (err) return FALSE;
@@ -214,8 +215,7 @@ cl_process (GeglOperation       *operation,
       cl_err = cl_motion_blur(i->tex[read][j], i->tex[0][j], i->size[0][j], &i->roi[0][j], &i->roi[read][j], num_steps, offset_x, offset_y);
       if (cl_err != CL_SUCCESS)
       {
-        g_warning("[OpenCL] Error in %s [GeglOperationAreaFilter] Kernel\n",
-            GEGL_OPERATION_CLASS (operation)->name);
+        g_warning("[OpenCL] Error in gegl:motion-blur");
         return FALSE;
       }
     }

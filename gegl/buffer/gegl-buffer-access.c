@@ -610,7 +610,6 @@ gegl_buffer_set (GeglBuffer          *buffer,
 
 
 #if 0
-
 /*
  *  slow nearest neighbour resampler that seems to be
  *  completely correct.
@@ -1206,6 +1205,73 @@ gegl_buffer_clear (GeglBuffer          *dst,
   while (gegl_buffer_iterator_next (i))
     {
       memset (((guchar*)(i->data[0])), 0, i->length * pxsize);
+    }
+}
+
+void            gegl_buffer_set_pattern       (GeglBuffer          *buffer,
+                                               const GeglRectangle *rect,
+                                               GeglBuffer          *pattern,
+                                               gdouble              x_offset,
+                                               gdouble              y_offset)
+{
+  GeglRectangle src_rect = {0,}, dst_rect;
+  int pat_width, pat_height;
+  int cols, rows;
+  int col, row;
+  int width, height;
+
+  pat_width  = gegl_buffer_get_width (pattern);
+  pat_height = gegl_buffer_get_height (pattern);
+  width      = gegl_buffer_get_width (buffer);
+  height     = gegl_buffer_get_height (buffer);
+
+  src_rect.width = dst_rect.width = pat_width;
+  src_rect.height = dst_rect.height = pat_height;
+
+  cols = width / pat_width + 1;
+  rows = height / pat_height + 1;
+
+  for (row = 0; row <= rows + 1; row++)
+    for (col = 0; col <= cols + 1; col++)
+      {
+        dst_rect.x = x_offset + (row-1) * pat_width;
+        dst_rect.y = y_offset + (col-1) * pat_height;
+        gegl_buffer_copy (pattern, &src_rect, buffer, &dst_rect);
+      }
+}
+
+void            gegl_buffer_set_color         (GeglBuffer          *dst,
+                                               const GeglRectangle *dst_rect,
+                                               GeglColor           *color)
+{
+  GeglBufferIterator *i;
+  gchar               buf[128];
+  gint                pxsize;
+
+  g_return_if_fail (GEGL_IS_BUFFER (dst));
+  g_return_if_fail (color);
+
+  gegl_color_get_pixel (color, dst->format, buf);
+
+  if (!dst_rect)
+    {
+      dst_rect = gegl_buffer_get_extent (dst);
+    }
+  if (dst_rect->width == 0 ||
+      dst_rect->height == 0)
+    return;
+
+  pxsize = babl_format_get_bytes_per_pixel (dst->format);
+
+  /* FIXME: this can be even further optimized by special casing it so
+   * that fully filled tiles are shared.
+   */
+  i = gegl_buffer_iterator_new (dst, dst_rect, dst->format, GEGL_BUFFER_WRITE);
+  while (gegl_buffer_iterator_next (i))
+    {
+      int j;
+      for (j = 0; j < i->length; j++)
+        memcpy (((guchar*)(i->data[0])) + pxsize * j, buf, pxsize);
     }
 }
 

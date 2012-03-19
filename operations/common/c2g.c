@@ -94,18 +94,18 @@ static void c2g (GeglBuffer          *src,
              */
 
             gfloat nominator = 0;
- 	    gfloat denominator = 0;
+      gfloat denominator = 0;
             gint c;
- 	    for (c=0; c<3; c++)
- 	      {
+      for (c=0; c<3; c++)
+        {
                 nominator   += (pixel[c] - min[c]) * (pixel[c] - min[c]);
                 denominator += (pixel[c] - max[c]) * (pixel[c] - max[c]);
- 	      }
+        }
 
             nominator = sqrt (nominator);
             denominator = sqrt (denominator);
             denominator = nominator + denominator;
- 	
+  
             if (denominator>0.000)
               {
                 dst_buf[dst_offset+0] = nominator/denominator;
@@ -316,59 +316,59 @@ static const char* kernel_source =
 
 static gegl_cl_run_data *cl_data = NULL;
 
-static cl_int 
+static cl_int
 cl_c2g (cl_mem                in_tex,
-		cl_mem                out_tex,
-		size_t                global_worksize,
-		const GeglRectangle   *src_roi, 
-		const GeglRectangle   *roi,
-		gint                  radius,
-        gint                  samples,
-        gint                  iterations,
-        gdouble               rgamma)
+    cl_mem                    out_tex,
+    size_t                    global_worksize,
+    const GeglRectangle      *src_roi,
+    const GeglRectangle      *roi,
+    gint                      radius,
+    gint                      samples,
+    gint                      iterations,
+    gdouble                   rgamma)
 {
   cl_int cl_err = 0;
   if (!cl_data)
-  {
-    const char *kernel_name[] ={"C2g_CL", NULL};
-    cl_data = gegl_cl_compile_and_build(kernel_source, kernel_name);
-  }
+    {
+      const char *kernel_name[] ={"C2g_CL", NULL};
+      cl_data = gegl_cl_compile_and_build(kernel_source, kernel_name);
+    }
   if (!cl_data)  return 0;
-  
-  const size_t gbl_size[2] = {roi->width,roi->height};
 
-  compute_luts(rgamma);  
+  const size_t gbl_size[2] = {roi->width, roi->height};
+
+  compute_luts(rgamma);
   cl_mem cl_lut_cos, cl_lut_sin, cl_radiuses;
   cl_lut_cos = gegl_clCreateBuffer(gegl_cl_get_context(),
-      CL_MEM_ALLOC_HOST_PTR|CL_MEM_READ_ONLY,
-      ANGLE_PRIME * sizeof(cl_float), NULL, &cl_err);
+                                   CL_MEM_ALLOC_HOST_PTR|CL_MEM_READ_ONLY,
+                                   ANGLE_PRIME * sizeof(cl_float), NULL, &cl_err);
 
   cl_err |= gegl_clEnqueueWriteBuffer(gegl_cl_get_command_queue(), cl_lut_cos,
-      CL_TRUE, NULL, ANGLE_PRIME * sizeof(cl_float), lut_cos, NULL, NULL, NULL);
+                                      CL_TRUE, NULL, ANGLE_PRIME * sizeof(cl_float), lut_cos, NULL, NULL, NULL);
   if (CL_SUCCESS != cl_err)   return cl_err;
 
   cl_lut_sin = gegl_clCreateBuffer(gegl_cl_get_context(),
-      CL_MEM_ALLOC_HOST_PTR|CL_MEM_READ_ONLY,
-      ANGLE_PRIME * sizeof(cl_float), NULL, &cl_err);
+                                   CL_MEM_ALLOC_HOST_PTR|CL_MEM_READ_ONLY,
+                                   ANGLE_PRIME * sizeof(cl_float), NULL, &cl_err);
 
   cl_err |= gegl_clEnqueueWriteBuffer(gegl_cl_get_command_queue(), cl_lut_sin,
-      CL_TRUE, NULL, ANGLE_PRIME * sizeof(cl_float), lut_sin, NULL, NULL, NULL);
+                                      CL_TRUE, NULL, ANGLE_PRIME * sizeof(cl_float), lut_sin, NULL, NULL, NULL);
   if (CL_SUCCESS != cl_err)    return cl_err;
-  
+
   cl_radiuses = gegl_clCreateBuffer(gegl_cl_get_context(),
-      CL_MEM_ALLOC_HOST_PTR|CL_MEM_READ_ONLY,
-      RADIUS_PRIME * sizeof(cl_float), NULL, &cl_err);
+                                    CL_MEM_ALLOC_HOST_PTR|CL_MEM_READ_ONLY,
+                                    RADIUS_PRIME * sizeof(cl_float), NULL, &cl_err);
 
   cl_err |= gegl_clEnqueueWriteBuffer(gegl_cl_get_command_queue(), cl_radiuses,
-      CL_TRUE, NULL, RADIUS_PRIME * sizeof(cl_float), radiuses, NULL, NULL, NULL); 
+                                      CL_TRUE, NULL, RADIUS_PRIME * sizeof(cl_float), radiuses, NULL, NULL, NULL); 
   if (CL_SUCCESS != cl_err)    return cl_err;
-  
+
   cl_int cl_src_width  = src_roi->width;
   cl_int cl_src_height = src_roi->height;
   cl_int cl_radius     = radius;
   cl_int cl_samples    = samples;
   cl_int cl_iterations = iterations;
-  
+
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 0, sizeof(cl_mem), (void*)&in_tex);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 1, sizeof(cl_int), (void*)&cl_src_width);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 2, sizeof(cl_int), (void*)&cl_src_height);
@@ -381,16 +381,14 @@ cl_c2g (cl_mem                in_tex,
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 9, sizeof(cl_int), (void*)&cl_iterations);
   if (cl_err != CL_SUCCESS) return cl_err;
 
-  cl_err = gegl_clEnqueueNDRangeKernel(
-      gegl_cl_get_command_queue(), cl_data->kernel[0],
-      2, NULL,
-      gbl_size, NULL,
-      0, NULL, NULL);
+  cl_err = gegl_clEnqueueNDRangeKernel(gegl_cl_get_command_queue(), cl_data->kernel[0],
+                                       2, NULL, gbl_size, NULL,
+                                       0, NULL, NULL);
   if (cl_err != CL_SUCCESS) return cl_err;
 
   cl_err = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
   if (CL_SUCCESS != cl_err)    return cl_err;
-  
+
   gegl_clReleaseMemObject(cl_radiuses);
   gegl_clReleaseMemObject(cl_lut_cos);
   gegl_clReleaseMemObject(cl_lut_sin);
@@ -398,21 +396,22 @@ cl_c2g (cl_mem                in_tex,
 
 static gboolean
 cl_process (GeglOperation       *operation,
-			GeglBuffer          *input,
-			GeglBuffer          *output,
-			const GeglRectangle *result)
+      GeglBuffer          *input,
+      GeglBuffer          *output,
+      const GeglRectangle *result)
 {
   const Babl *in_format  = babl_format("RGBA float");
   const Babl *out_format = gegl_operation_get_format (operation, "output");
   gint err;
   gint j;
   cl_int cl_err;
-  
+
   GeglOperationAreaFilter *op_area = GEGL_OPERATION_AREA_FILTER (operation);
   GeglChantO *o = GEGL_CHANT_PROPERTIES (operation);
-  
+
   GeglBufferClIterator *i = gegl_buffer_cl_iterator_new (output,result, out_format, GEGL_CL_BUFFER_WRITE);
-                gint read = gegl_buffer_cl_iterator_add_2 (i, input, result, in_format, GEGL_CL_BUFFER_READ, op_area->left, op_area->right, op_area->top, op_area->bottom);
+                gint read = gegl_buffer_cl_iterator_add_2 (i, input, result, in_format, GEGL_CL_BUFFER_READ,
+                                                           op_area->left, op_area->right, op_area->top, op_area->bottom);
   while (gegl_buffer_cl_iterator_next (i, &err))
   {
     if (err) return FALSE;
@@ -422,8 +421,7 @@ cl_process (GeglOperation       *operation,
                       o->radius,o->samples,o->iterations,RGAMMA);
       if (cl_err != CL_SUCCESS)
       {
-        g_warning("[OpenCL] Error in %s [GeglOperationPointFilter] Kernel\n",
-          GEGL_OPERATION_CLASS (operation)->name);
+        g_warning("[OpenCL] Error in gegl:c2g Kernel");
         return FALSE;
       }
     }
@@ -441,7 +439,7 @@ process (GeglOperation       *operation,
   GeglRectangle compute;
   compute = gegl_operation_get_required_for_output (operation, "input",result);
 
-  if (o->radius < 501 && cl_state.is_accelerated)
+  if (o->radius < 500 && cl_state.is_accelerated)
     if(cl_process(operation, input, output, result))
       return TRUE;
 

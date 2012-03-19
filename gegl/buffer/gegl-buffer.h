@@ -27,6 +27,7 @@ G_BEGIN_DECLS
 
 #define GEGL_TYPE_BUFFER (gegl_buffer_get_type ())
 #define GEGL_BUFFER(obj) (G_TYPE_CHECK_INSTANCE_CAST ((obj), GEGL_TYPE_BUFFER, GeglBuffer))
+#define GEGL_IS_BUFFER(obj)         (G_TYPE_CHECK_INSTANCE_TYPE ((obj), GEGL_TYPE_BUFFER))
 #ifndef __GEGL_BUFFER_TYPES_H__
 typedef struct _GeglBuffer   GeglBuffer;
 typedef struct _GeglSampler  GeglSampler;
@@ -255,6 +256,35 @@ void            gegl_buffer_set               (GeglBuffer          *buffer,
                                                void                *src,
                                                gint                 rowstride);
 
+
+/**
+ * gegl_buffer_set_color:
+ * @buffer: a #GeglBuffer
+ * @rect: a rectangular region to fill with a color.
+ * @color: the GeglColor to fill with.
+ *
+ * Sets the region covered by rect to the specified color.
+ */
+void            gegl_buffer_set_color         (GeglBuffer          *buffer,
+                                               const GeglRectangle *rect,
+                                               GeglColor           *color);
+
+
+/**
+ * gegl_buffer_set_pattern:
+ * @buffer: a #GeglBuffer
+ * @roi: a rectangular region
+ * @pattern: a #GeglBuffer to be repeated as a pattern
+ * @x_offset: where the pattern starts horizontally
+ * @y_offset: where the pattern starts vertical
+ *
+ * Fill a region with a repeating pattern.
+ */
+void            gegl_buffer_set_pattern       (GeglBuffer          *buffer,
+                                               const GeglRectangle *rect,
+                                               GeglBuffer          *pattern,
+                                               gdouble              x_offset,
+                                               gdouble              y_offset);
 
 /**
  * gegl_buffer_get_format:
