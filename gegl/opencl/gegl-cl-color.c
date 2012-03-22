@@ -39,6 +39,25 @@ CL_RGBAF_TO_YAF           = 17,
 CL_YAF_TO_RGBAF           = 18,
 CL_RGBAU8_TO_YAF          = 19,
 CL_YAF_TO_RGBAU8          = 20,
+
+CL_RGBAU8_TO_YF           = 21,
+CL_YF_TO_RGBAU8           = 22,
+
+CL_RGBU8_TO_RAGABAF       = 23,
+CL_RAGABAF_TO_RGBU8       = 24,
+
+CL_RGBU8_TO_RGBA_GAMMA_F  = 25,
+CL_RGBA_GAMMA_F_TO_RGBU8  = 26,
+
+CL_RGBU8_TO_YCBCRAF       = 27,
+CL_YCBCRAF_TO_RGBU8       = 28,
+
+CL_RGBU8_TO_YAF           = 29,
+CL_YAF_TO_RGBU8           = 30,
+
+CL_RGBU8_TO_YF            = 31,
+CL_YF_TO_RGBU8            = 32,
+
 };
 
 void
@@ -71,6 +90,24 @@ gegl_cl_color_compile_kernels(void)
                                "yaf_to_rgbaf",            /* 18 */
                                "rgbau8_to_yaf",           /* 19 */
                                "yaf_to_rgbau8",           /* 20 */
+
+							   "rgbau8_to_yf",            /* 21 */
+							   "yf_to_rgbau8",            /* 22 */
+						   
+							   "rgbu8_to_ragabaf",        /* 23 */
+							   "ragabaf_to_rgbu8",        /* 24 */
+
+							   "rgbu8_to_rgba_gamma_f",   /* 25 */
+							   "rgba_gamma_f_to_rgbu8",   /* 26 */
+
+							   "rgbu8_to_ycbcraf",        /* 27 */
+							   "ycbcraf_to_rgbu8",        /* 28 */
+
+							   "rgbu8_to_yaf",            /* 29 */
+							   "yaf_to_rgbu8",            /* 30 */
+
+							   "rgbu8_to_yf",             /* 31 */
+							   "yf_to_rgbu8",             /* 32 */
 
                                NULL};
 
@@ -109,25 +146,34 @@ choose_kernel (const Babl *in_format, const Babl *out_format)
       else if (out_format == babl_format ("R'G'B'A float"))    kernel = CL_RGBAU8_TO_RGBA_GAMMA_F;
       else if (out_format == babl_format ("Y'CbCrA float"))    kernel = CL_RGBAU8_TO_YCBCRAF;
       else if (out_format == babl_format ("YA float"))         kernel = CL_RGBAU8_TO_YAF;
+	  else if (out_format == babl_format ("Y float"))         kernel = CL_RGBAU8_TO_YF;
     }
   else if (in_format == babl_format ("RaGaBaA float"))
     {
       if      (out_format == babl_format ("RGBA float"))       kernel = CL_RAGABAF_TO_RGBAF;
       else if (out_format == babl_format ("RGBA u8"))          kernel = CL_RAGABAF_TO_RGBAU8;
+	  else if (out_format == babl_format ("RGB u8"))           kernel = CL_RAGABAF_TO_RGBU8;
     }
   else if (in_format == babl_format ("R'G'B'A float"))
     {
       if      (out_format == babl_format ("RGBA float"))       kernel = CL_RGBA_GAMMA_F_TO_RGBAF;
       else if (out_format == babl_format ("RGBA u8"))          kernel = CL_RGBA_GAMMA_F_TO_RGBAU8;
+	  else if (out_format == babl_format ("RGB u8"))           kernel = CL_RGBA_GAMMA_F_TO_RGBU8;
     }
   else if (in_format == babl_format ("Y'CbCrA float"))
     {
       if      (out_format == babl_format ("RGBA float"))       kernel = CL_YCBCRAF_TO_RGBAF;
       else if (out_format == babl_format ("RGBA u8"))          kernel = CL_YCBCRAF_TO_RGBAU8;
+	  else if (out_format == babl_format ("RGB u8"))           kernel = CL_YCBCRAF_TO_RGBU8;
     }
   else if (in_format == babl_format ("RGB u8"))
     {
       if      (out_format == babl_format ("RGBA float"))       kernel = CL_RGBU8_TO_RGBAF;
+	  else if (out_format == babl_format ("RaGaBaA float"))    kernel = CL_RGBU8_TO_RAGABAF;
+	  else if (out_format == babl_format ("R'G'B'A float"))    kernel = CL_RGBU8_TO_RGBA_GAMMA_F;
+	  else if (out_format == babl_format ("Y'CbCrA float"))    kernel = CL_RGBU8_TO_YCBCRAF;
+	  else if (out_format == babl_format ("YA float"))         kernel = CL_RGBU8_TO_YAF;
+	  else if (out_format == babl_format ("Y float"))          kernel = CL_RGBU8_TO_YF;
     }
   else if (in_format == babl_format ("Y u8"))
     {
@@ -137,7 +183,13 @@ choose_kernel (const Babl *in_format, const Babl *out_format)
     {
       if      (out_format == babl_format ("RGBA float"))       kernel = CL_YAF_TO_RGBAF;
       else if (out_format == babl_format ("RGBA u8"))          kernel = CL_YAF_TO_RGBAU8;
+	  else if (out_format == babl_format ("RGB u8"))           kernel = CL_YAF_TO_RGBU8;
     }
+  else if (in_format == babl_format ("Y float"))
+  {
+	  if      (out_format == babl_format ("RGBA u8"))          kernel = CL_YF_TO_RGBAU8;
+	  else if (out_format == babl_format ("RGB u8"))           kernel = CL_YF_TO_RGBU8;
+  }
 
   return kernel;
 }
