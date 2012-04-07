@@ -13,6 +13,7 @@
 #include "gegl-tile-storage.h"
 
 #include "gegl-buffer-cl-cache.h"
+#include "gegl-buffer-cl-worker.h"
 #include "opencl/gegl-cl.h"
 
 typedef struct
@@ -140,7 +141,7 @@ gegl_buffer_cl_cache_flush2 (GeglTileHandlerCache *cache,
           if (cl_err != CL_SUCCESS) CL_ERROR;
 
           /* tile-ize */
-          gegl_buffer_set (entry->buffer, &entry->roi, 0, entry->buffer->soft_format, data, GEGL_AUTO_ROWSTRIDE);
+          gegl_buffer_cl_worker_transf (entry->buffer, data, size, entry->roi, TRUE);
 
           cl_err = gegl_clEnqueueUnmapMemObject (gegl_cl_get_command_queue(), entry->tex, data,
                                                  0, NULL, NULL);

@@ -12,11 +12,14 @@
 #include "gegl-buffer-types.h"
 #include "gegl-buffer-cl-iterator.h"
 #include "gegl-buffer-cl-cache.h"
+#include "gegl-buffer-cl-worker.h"
 #include "gegl-buffer-private.h"
 #include "gegl-tile-storage.h"
 #include "gegl-utils.h"
 
 #define CL_ERROR {GEGL_NOTE (GEGL_DEBUG_OPENCL, "Error in %s:%d@%s - %s\n", __FILE__, __LINE__, __func__, gegl_cl_errstring(cl_err)); goto error;}
+
+/* OpenCL buffer iterator */
 
 typedef struct GeglBufferClIterators
 {
@@ -396,7 +399,7 @@ gegl_buffer_cl_iterator_next (GeglBufferClIterator *iterator, gboolean *err)
                         if (cl_err != CL_SUCCESS) CL_ERROR;
 
                         /* color conversion will be performed in the GPU later */
-                        gegl_buffer_get (i->buffer[no], &i->roi[no][j], 1.0, i->buffer[no]->soft_format, data, GEGL_AUTO_ROWSTRIDE, GEGL_ABYSS_NONE);
+                        gegl_buffer_cl_worker_transf (i->buffer[no], data, i->buf_cl_format_size [no], i->roi[no][j], FALSE);
 
                         cl_err = gegl_clEnqueueUnmapMemObject (gegl_cl_get_command_queue(), i->tex_buf[no][j], data,
                                                                0, NULL, NULL);
@@ -434,7 +437,9 @@ gegl_buffer_cl_iterator_next (GeglBufferClIterator *iterator, gboolean *err)
                         if (cl_err != CL_SUCCESS) CL_ERROR;
 
                         /* color conversion will be performed in the GPU later */
-                        gegl_buffer_get (i->buffer[no], &i->roi[no][j], 1.0, i->buffer[no]->soft_format, data, GEGL_AUTO_ROWSTRIDE, GEGL_ABYSS_NONE);
+                        /* get buffer data using multiple worker threads
+                           to increase bandwidth */
+                        gegl_buffer_cl_worker_transf (i->buffer[no], data, i->buf_cl_format_size [no], i->roi[no][j], FALSE);
 
                         cl_err = gegl_clEnqueueUnmapMemObject (gegl_cl_get_command_queue(), i->tex_buf[no][j], data,
                                                                0, NULL, NULL);
