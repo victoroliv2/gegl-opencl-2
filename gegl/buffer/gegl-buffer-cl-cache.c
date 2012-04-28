@@ -90,17 +90,22 @@ gegl_buffer_cl_cache_merge (GeglBuffer          *buffer,
         {
           gpointer data;
 
-          data = gegl_clEnqueueMapBuffer(gegl_cl_get_command_queue(), entry->tex, CL_TRUE,
-                                         CL_MAP_READ, 0, roi->width * roi->height * size,
-                                         0, NULL, NULL, &cl_err);
-          if (cl_err != CL_SUCCESS) goto error;
+//          data = gegl_clEnqueueMapBuffer(gegl_cl_get_command_queue(), entry->tex, CL_TRUE,
+//                                         CL_MAP_READ, 0, roi->width * roi->height * size,
+//                                         0, NULL, NULL, &cl_err);
+//          if (cl_err != CL_SUCCESS) goto error;
+                        data = malloc(roi->width * roi->height * size);
+                        gegl_clEnqueueReadBuffer(gegl_cl_get_command_queue(),entry->tex,CL_TRUE,0,roi->width * roi->height * size,data,NULL,NULL,&cl_err );
+          	
 
           /* tile-ize */
           gegl_buffer_set (entry->buffer, &entry->roi, entry->buffer->format, data, GEGL_AUTO_ROWSTRIDE);
+          //gegl_buffer_cl_worker_transf (entry->buffer, data, size, entry->roi, TRUE);
 
-          cl_err = gegl_clEnqueueUnmapMemObject (gegl_cl_get_command_queue(), entry->tex, data,
-                                                 0, NULL, NULL);
-          if (cl_err != CL_SUCCESS) goto error;
+//          cl_err = gegl_clEnqueueUnmapMemObject (gegl_cl_get_command_queue(), entry->tex, data,
+//                                                 0, NULL, NULL);
+//          if (cl_err != CL_SUCCESS) goto error;
+            free(data);
         }
     }
 
@@ -213,7 +218,6 @@ gegl_buffer_cl_cache_invalidate (GeglBuffer          *buffer,
                                  const GeglRectangle *roi)
 {
   gegl_buffer_cl_cache_merge (buffer, roi);
-  gegl_clFinish (gegl_cl_get_command_queue ());
   gegl_buffer_cl_cache_remove (buffer, roi);
 }
 
@@ -300,20 +304,21 @@ gegl_buffer_cl_cache_from (GeglBuffer          *buffer,
                   cl_err = gegl_cl_color_conv (entry->tex, tex_dest, entry->roi.width * entry->roi.height, buffer->format, format);
                   if (cl_err == FALSE) CL_ERROR;
 
-                  data = gegl_clEnqueueMapBuffer(gegl_cl_get_command_queue(), tex_dest, CL_TRUE,
-                                                 CL_MAP_READ,
-                                                 0, entry->roi.width * entry->roi.height * dest_size,
-                                                 0, NULL, NULL, &cl_err);
-                  if (cl_err != CL_SUCCESS) CL_ERROR;
+//                  data = gegl_clEnqueueMapBuffer(gegl_cl_get_command_queue(), tex_dest, CL_TRUE,
+//                                                 CL_MAP_READ,
+//                                                 0, entry->roi.width * entry->roi.height * dest_size,
+//                                                 0, NULL, NULL, &cl_err);
+//                  if (cl_err != CL_SUCCESS) CL_ERROR;
+                  data = malloc(entry->roi.width * entry->roi.height * dest_size);
+                  gegl_clEnqueueReadBuffer(gegl_cl_get_command_queue(),tex_dest,CL_TRUE,0,entry->roi.width * entry->roi.height * dest_size,data,NULL,NULL,&cl_err );
+
 
                   gegl_buffer_set (cb->buffer, &entry->roi, format, data, GEGL_AUTO_ROWSTRIDE);
 
-                  cl_err = gegl_clEnqueueUnmapMemObject (gegl_cl_get_command_queue(), tex_dest, data,
-                                                         0, NULL, NULL);
-                  if (cl_err != CL_SUCCESS) CL_ERROR;
-
-                  cl_err = gegl_clFinish(gegl_cl_get_command_queue());
-                  if (cl_err != CL_SUCCESS) CL_ERROR;
+//                  cl_err = gegl_clEnqueueUnmapMemObject (gegl_cl_get_command_queue(), tex_dest, data,
+//                                                         0, NULL, NULL);
+//                  if (cl_err != CL_SUCCESS) CL_ERROR;
+                    free(data);
 
                   gegl_buffer_get (cb->buffer,
                                    1.0,
@@ -322,7 +327,7 @@ gegl_buffer_cl_cache_from (GeglBuffer          *buffer,
                                    dest_buf,
                                    rowstride);
 
-                  if (tex_dest) gegl_clReleaseMemObject (tex_dest);
+                  if (tex_dest)	gegl_clReleaseMemObject (tex_dest);
 
                   return TRUE;
                 }
