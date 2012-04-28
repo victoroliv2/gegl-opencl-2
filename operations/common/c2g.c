@@ -360,7 +360,7 @@ cl_c2g (cl_mem                in_tex,
                                     RADIUS_PRIME * sizeof(cl_float), NULL, &cl_err);
 
   cl_err |= gegl_clEnqueueWriteBuffer(gegl_cl_get_command_queue(), cl_radiuses,
-                                      CL_TRUE, NULL, RADIUS_PRIME * sizeof(cl_float), radiuses, NULL, NULL, NULL); 
+                                      CL_TRUE, NULL, RADIUS_PRIME * sizeof(cl_float), radiuses, NULL, NULL, NULL);
   if (CL_SUCCESS != cl_err)    return cl_err;
 
   cl_int cl_src_width  = src_roi->width;
@@ -386,8 +386,7 @@ cl_c2g (cl_mem                in_tex,
                                        0, NULL, NULL);
   if (cl_err != CL_SUCCESS) return cl_err;
 
-  cl_err = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
-  if (CL_SUCCESS != cl_err)    return cl_err;
+
 
   gegl_clFinish(gegl_cl_get_command_queue ());
 

@@ -105,56 +105,63 @@ static const char* kernel_source =
 "  float strength = 0.0f;                                        \n"
 "  float u,v,costy,sinty;                                        \n"
 "  int x,y;                                                      \n"
-"  x=gidx+roi_x;                                                 \n"
-"  y=gidy+roi_y;                                                 \n"
+"  x = gidx + roi_x;                                             \n"
+"  y = gidy + roi_y;                                             \n"
 "  sinty = sint * (y-midy) - midx;                               \n"
 "  costy = cost * (y-midy) + midy;                               \n"
 "                                                                \n"
 "  u = cost * (x-midx) - sinty;                                  \n"
 "  v = sint * (x-midx) + costy;                                  \n"
-"  if (length == 0.0f) strength =0.0f;                           \n"
-"  else{                                                         \n"
-"       switch (o_shape)                                         \n"
+"                                                                \n"
+"  if (length == 0.0f)                                           \n"
+"    strength = 0.0f;                                            \n"
+"  else                                                          \n"
 "    {                                                           \n"
-"    case 0:                                                     \n"
-"      strength = hypot ((u-midx) / scale, v-midy); break;       \n"
-"    case 1:                                                     \n"
-"       strength=fmax(fabs(u-midx)/scale,fabs(v-midy));break;    \n"
-"    case 2:                                                     \n"
-"      strength = fabs(u-midx) / scale + fabs(v-midy);break;     \n"
+"      switch (o_shape)                                          \n"
+"        {                                                       \n"
+"          case 0:                                               \n"
+"          strength = hypot ((u-midx) / scale, v-midy);          \n"
+"          break;                                                \n"
+"                                                                \n"
+"          case 1:                                               \n"
+"          strength = fmax (fabs(u-midx)/scale, fabs(v-midy));   \n"
+"          break;                                                \n"
+"                                                                \n"
+"          case 2:                                               \n"
+"          strength = fabs (u-midx) / scale + fabs(v-midy);      \n"
+"          break;                                                \n"
+"        }                                                       \n"
+"      strength /= length;                                       \n"
+"      strength = (strength-radius0) / rdiff;                    \n"
 "    }                                                           \n"
-"    strength /= length;                                         \n"
-"    strength = (strength-radius0) / rdiff;                      \n"
-"     }                                                          \n"
-"  if (strength<0.0f) strength = 0.0f;                           \n"
-"   if (strength>1.0f) strength = 1.0f;                          \n"
+"                                                                \n"
+"  if (strength < 0.0f) strength = 0.0f;                         \n"
+"  if (strength > 1.0f) strength = 1.0f;                         \n"
 "                                                                \n"
 "  if (gamma > 0.9999f && gamma < 2.0001f)                       \n"
 "    strength *= strength;                                       \n"
 "  else if (gamma != 1.0f)                                       \n"
 "    strength = pow(strength, gamma);                            \n"
-"  out[gid] = in[gid]*(1.0f-strength) + color * strength;        \n"   
+"                                                                \n"
+"  out[gid] = in[gid]*(1.0f-strength) + color * strength;        \n"
 "}                                                               \n";
-
 
 static gegl_cl_run_data * cl_data = NULL;
 
 static gboolean
 cl_process (GeglOperation       *operation,
-      cl_mem              in_tex,
-      cl_mem              out_tex,
-      size_t              global_worksize,
+            cl_mem               in_tex,
+            cl_mem               out_tex,
+            size_t               global_worksize,
             const GeglRectangle *roi)
 {
-  GeglOperationAreaFilter *op_area = GEGL_OPERATION_AREA_FILTER (operation);
   GeglChantO *o = GEGL_CHANT_PROPERTIES (operation);
   gfloat      scale;
   gfloat      radius0, radius1;
   gint        roi_x, roi_y,x;
   gint        midx, midy;
-  GeglRectangle *bounds = gegl_operation_source_get_bounding_box (
-                            operation, "input");
-  
+  GeglRectangle *bounds = gegl_operation_source_get_bounding_box (operation, "input");
+
   gfloat length = hypot (bounds->width, bounds->height)/2;
   gfloat rdiff;
   gfloat cost, sint;
@@ -189,43 +196,41 @@ cl_process (GeglOperation       *operation,
   cost = cos(-o->rotation * (G_PI*2/360.0));
   sint = sin(-o->rotation * (G_PI*2/360.0));
 
+  const size_t gbl_size[2] = {roi->width, roi->height};
 
-  const size_t gbl_size[2]= {roi->width, roi->height};
   cl_int cl_err = 0;
   cl_float4 f_color = {color[0], color[1], color[2],color[3]};
+
   if (!cl_data)
   {
     const char *kernel_name[] = {"vignette_cl",NULL};
     cl_data = gegl_cl_compile_and_build (kernel_source, kernel_name);
   }
-
   if (!cl_data) return 1;
 
   gint   shape = o->shape;
   gfloat gamma = o->gamma;
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 0, sizeof(cl_mem),    (void*)&in_tex);
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 1, sizeof(cl_mem),    (void*)&out_tex);
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 2, sizeof(cl_float4), (void*)&f_color);
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 3, sizeof(cl_float),  (void*)&scale);
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 4, sizeof(cl_float),  (void*)&cost);
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 5, sizeof(cl_float),  (void*)&sint);
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 6, sizeof(cl_int),  (void*)&roi_x);
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 7, sizeof(cl_int),  (void*)&roi_y);
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 8, sizeof(cl_int),  (void*)&midx);
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 9, sizeof(cl_int),  (void*)&midy);
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 10, sizeof(cl_int),  (void*)&shape);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 0,  sizeof(cl_mem),   (void*)&in_tex);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 1,  sizeof(cl_mem),   (void*)&out_tex);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 2,  sizeof(cl_float4),(void*)&f_color);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 3,  sizeof(cl_float), (void*)&scale);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 4,  sizeof(cl_float), (void*)&cost);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 5,  sizeof(cl_float), (void*)&sint);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 6,  sizeof(cl_int),   (void*)&roi_x);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 7,  sizeof(cl_int),   (void*)&roi_y);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 8,  sizeof(cl_int),   (void*)&midx);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 9,  sizeof(cl_int),   (void*)&midy);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 10, sizeof(cl_int),   (void*)&shape);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 11, sizeof(cl_float), (void*)&gamma);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 12, sizeof(cl_float), (void*)&length);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 13, sizeof(cl_float), (void*)&radius0);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 14, sizeof(cl_float), (void*)&rdiff);
-
-
   if (cl_err != CL_SUCCESS) return cl_err;
 
   cl_err = gegl_clEnqueueNDRangeKernel(gegl_cl_get_command_queue (),
-                                     cl_data->kernel[0], 2,
-                                     NULL, &gbl_size, NULL,
-                                     0, NULL, NULL);
+                                       cl_data->kernel[0], 2,
+                                       NULL, &gbl_size, NULL,
+                                       0, NULL, NULL);
   if (cl_err != CL_SUCCESS) return cl_err;
   return  cl_err;
 }
@@ -244,8 +249,7 @@ process (GeglOperation       *operation,
   gfloat      radius0, radius1;
   gint        x, y;
   gint        midx, midy;
-  GeglRectangle *bounds = gegl_operation_source_get_bounding_box (
-                            operation, "input");
+  GeglRectangle *bounds = gegl_operation_source_get_bounding_box (operation, "input");
   gfloat length = hypot (bounds->width, bounds->height)/2;
   gfloat rdiff;
   gfloat cost, sint;

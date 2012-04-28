@@ -37,8 +37,6 @@ gegl_chant_int (ysize, _("Block Height"), 1, 256, 8,
 #define CELL_X(px, cell_width)  ((px) / (cell_width))
 #define CELL_Y(py, cell_height)  ((py) / (cell_height))
 
-
-
 static void
 calc_block_colors (gfloat* block_colors,
                    const gfloat* input,
@@ -141,45 +139,77 @@ static const char* kernel_source =
 "                             int roi_x,                               \n"
 "                             int roi_y,                               \n"
 "                             int line_width,                          \n"
-"                             int block_count_x )                      \n"
+"                             int block_count_x,                       \n"
+"                             float weight,                            \n"
+"                             int cx0,                                 \n"
+"                             int cy0)                                 \n"
 "{                                                                     \n"
 "    int gidx = get_global_id(0);                                      \n"
 "    int gidy = get_global_id(1);                                      \n"
-"    int cx = roi_x / xsize + gidx;                                    \n"
-"    int cy = roi_y / ysize + gidy;                                    \n"
-"                                                                      \n"
-"    float weight   = 1.0f / (xsize * ysize);                          \n"
-"                                                                      \n"
+"    int cx = cx0 + gidx;                                              \n"
+"    int cy = cy0 + gidy;                                              \n"
 "    int px = cx * xsize + xsize - roi_x;                              \n"
 "    int py = cy * ysize + ysize - roi_y;                              \n"
-"                                                                      \n"
-"    int i,j;                                                          \n"
+"    int i,j,t,u;                                                      \n"
 "    float4 col = 0.0f;                                                \n"
-"    for (j = py;j < py + ysize; ++j)                                  \n"
+"    float16 in_v;                                                     \n"
+"    if(xsize%4 == 0)                                                  \n"
 "    {                                                                 \n"
-"        for (i = px;i < px + xsize; ++i)                              \n"
-"        {                                                             \n"
-"            col += in[j * line_width + i];                            \n"
-"        }                                                             \n"
+"       __global float *in_pixl = in;                                  \n"
+"       for (j = py;j < py + ysize; ++j)                               \n"
+"      {                                                               \n"
+"          for (i = px;i < px + xsize ; i +=4)                         \n"
+"          {                                                           \n"
+"             t = j * line_width + i;                                  \n"
+"             in_v = vload16(0, in_pixl + t * 4);                      \n"
+"             col += in_v.s0123;                                       \n"
+"             col += in_v.s4567;                                       \n"
+"             col += in_v.s89ab;                                       \n"
+"             col += in_v.scdef;                                       \n"
+"          }                                                           \n"
+"       }                                                              \n"
+"    }                                                                 \n"
+"    else{                                                             \n"
+"       __global float *in_pixl = in;                                  \n"
+"       int xstep = xsize / 4;                                         \n"
+"       u = 4 * xstep;                                                 \n"
+"       for (j = py;j < py + ysize; ++j)                               \n"
+"       {                                                              \n"
+"          for (i = px;i < px + u ; i +=4)                             \n"
+"          {                                                           \n"
+"             t = j * line_width + i;                                  \n"
+"             in_v = vload16(0, in_pixl + t * 4);                      \n"
+"             col += in_v.s0123;                                       \n"
+"             col += in_v.s4567;                                       \n"
+"             col += in_v.s89ab;                                       \n"
+"             col += in_v.scdef;                                       \n"
+"          }                                                           \n"
+"          for (i = px + u;i < px + xsize; ++i)                        \n"
+"          {                                                           \n"
+"             col += in[j * line_width + i];                           \n"
+"           }                                                          \n"
+"       }                                                              \n"
 "    }                                                                 \n"
 "    out[gidy * block_count_x + gidx] = col * weight;                  \n"
 "                                                                      \n"
 "}                                                                     \n"
 "                                                                      \n"
-"__kernel void kernel_pixelise (__global float4 *in,                   \n"
+"__kernel void kernel_pixelise (__global const float4 *in,             \n"
 "                             __global float4 *out,                    \n"
 "                             int xsize,                               \n"
 "                             int ysize,                               \n"
 "                             int roi_x,                               \n"
 "                             int roi_y,                               \n"
+"                             int cx0,                                 \n"
+"                             int cy0,                                 \n"
 "                             int block_count_x)                       \n"
 "{                                                                     \n"
 "    int gidx = get_global_id(0);                                      \n"
 "    int gidy = get_global_id(1);                                      \n"
 "                                                                      \n"
 "    int src_width  = get_global_size(0);                              \n"
-"    int cx = (gidx + roi_x) / xsize - roi_x / xsize;                  \n"
-"    int cy = (gidy + roi_y) / ysize - roi_y / ysize;                  \n"
+"    int cx = (gidx + roi_x) / xsize - cx0;                            \n"
+"    int cy = (gidy + roi_y) / ysize - cy0;                            \n"
 "    out[gidx + gidy * src_width] = in[cx + cy * block_count_x];       \n"
 "}                                                                     \n";
 
@@ -209,7 +239,8 @@ cl_pixelise (cl_mem                in_tex,
   gint cy0 = CELL_Y(roi->y ,ysize);
   gint block_count_x = CELL_X(roi->x+roi->width - 1, xsize)-cx0 + 1;
   gint block_count_y = CELL_Y(roi->y+roi->height - 1, ysize)-cy0 + 1;
-  cl_int line_width=roi->width + 2 * xsize;
+  cl_int line_width = roi->width + 2 * xsize;
+  float weight = 1.0f / (xsize * ysize);
 
   size_t gbl_size_tmp[2]={block_count_x,block_count_y};
 
@@ -221,6 +252,9 @@ cl_pixelise (cl_mem                in_tex,
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 5, sizeof(cl_int),   (void*)&roi->y);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 6, sizeof(cl_int),   (void*)&line_width);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 7, sizeof(cl_int),   (void*)&block_count_x);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 8, sizeof(cl_float), (void*)&weight);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 9, sizeof(cl_float), (void*)&cx0);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[0], 10, sizeof(cl_float), (void*)&cy0);
   if (cl_err != CL_SUCCESS) return cl_err;
   cl_err = gegl_clEnqueueNDRangeKernel(gegl_cl_get_command_queue (),
                                         cl_data->kernel[0], 2,
@@ -234,7 +268,9 @@ cl_pixelise (cl_mem                in_tex,
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 3, sizeof(cl_int),   (void*)&ysize);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 4, sizeof(cl_int),   (void*)&roi->x);
   cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 5, sizeof(cl_int),   (void*)&roi->y);
-  cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 6, sizeof(cl_int),   (void*)&block_count_x);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 6, sizeof(cl_int),   (void*)&cx0);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 7, sizeof(cl_int),   (void*)&cy0);
+  cl_err |= gegl_clSetKernelArg(cl_data->kernel[1], 8, sizeof(cl_int),   (void*)&block_count_x);
   if (cl_err != CL_SUCCESS) return cl_err;
   cl_err = gegl_clEnqueueNDRangeKernel(gegl_cl_get_command_queue (),
                                         cl_data->kernel[1], 2,
@@ -255,7 +291,6 @@ cl_process (GeglOperation       *operation,
   gint err;
   gint j;
   cl_int cl_err;
-
   GeglOperationAreaFilter *op_area = GEGL_OPERATION_AREA_FILTER (operation);
   GeglChantO *o = GEGL_CHANT_PROPERTIES (operation);
 
@@ -293,7 +328,7 @@ process (GeglOperation       *operation,
   if (cl_state.is_accelerated)
     if (cl_process (operation, input, output, result))
       return TRUE;
-
+  
   gfloat* buf;
   rect = *result;
   rect.x -= op_area->left;

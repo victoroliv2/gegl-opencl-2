@@ -111,8 +111,8 @@ static const char* kernel_source =
 "  int gid = get_global_id(0);                                  \n"
 "  float2 in_v  = in [gid];                                     \n"
 "  float2 out_v;                                                \n"
-"  out_v.x = (in_v.x > value)? 1.0f : 0.0f;                     \n"
-"  out_v.y = in_v.y;                                            \n"
+"  out_v = (in_v >(float2)(value, 1)) ? (float2)(1.0f, in_v.y) :\n"
+"                                       (float2)(0.0f, in_v.y); \n"
 "  out[gid]  =  out_v;                                          \n"
 "}                                                              \n";
 

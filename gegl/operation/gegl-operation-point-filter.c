@@ -95,13 +95,13 @@ gegl_operation_point_filter_cl_process (GeglOperation       *operation,
       return FALSE;
     }
 
-  g_printf("[OpenCL] BABL formats: (%s,%s) (%s,%s)\n \t Tile Size:(%d, %d)\n",
-           babl_get_name(input->format),
-           babl_get_name(in_format),
-           babl_get_name(out_format),
-           babl_get_name(output->format),
-           input->tile_storage->tile_width,
-           input->tile_storage->tile_height);
+//   g_printf("[OpenCL] BABL formats: (%s,%s) (%s,%s)\n \t Tile Size:(%d, %d)\n",
+//            babl_get_name(input->format),
+//            babl_get_name(in_format),
+//            babl_get_name(out_format),
+//            babl_get_name(output->format),
+//            input->tile_storage->tile_width,
+//            input->tile_storage->tile_height);
 
   /* Process */
   {

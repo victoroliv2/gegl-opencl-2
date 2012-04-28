@@ -659,7 +659,7 @@ process (GeglOperation       *operation,
   force_iir = o->filter && !strcmp (o->filter, "iir");
   force_fir = o->filter && !strcmp (o->filter, "fir");
 
-  if (cl_state.is_accelerated && force_fir)
+  if (cl_state.is_accelerated && !force_iir)
     if (cl_process(operation, input, output, result))
       return TRUE;
 

@@ -268,8 +268,7 @@ cl_noise_reduction (cl_mem                in_tex,
                                     src_roi->width * src_roi->height * stride,
                                     NULL, NULL, NULL);
 
-  cl_err = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
-  if (CL_SUCCESS != cl_err) return cl_err;
+
 
   cl_mem tmptex = temp_tex;
   for (i = 0;i<iterations;i++)
@@ -292,8 +291,7 @@ cl_noise_reduction (cl_mem                in_tex,
       cl_err = gegl_clEnqueueNDRangeKernel(gegl_cl_get_command_queue(), cl_data->kernel[0],
                                            2, NULL, gbl_size_tmp, NULL,
                                            0, NULL, NULL);
-      cl_err = gegl_clEnqueueBarrier(gegl_cl_get_command_queue());
-      if (CL_SUCCESS != cl_err) return cl_err;
+
     }
 
   gbl_size_tmp[0] = roi->width ;
